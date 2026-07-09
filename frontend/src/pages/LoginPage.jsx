@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Radio, ArrowRight } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -7,6 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TID } from "@/lib/testIds";
 import { toast } from "sonner";
+
+const redirectFor = (u) => {
+  if (!u) return "/login";
+  if (u.role === "platform_owner") return "/platform";
+  if (u.role === "room_admin") return "/admin";
+  return "/room";
+};
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -17,16 +24,11 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const redirectFor = (u) => {
-    if (!u) return "/login";
-    if (u.role === "platform_owner") return "/platform";
-    if (u.role === "room_admin") return "/admin";
-    return "/room";
-  };
-
-  if (user) {
-    navigate(redirectFor(user), { replace: true });
-  }
+  useEffect(() => {
+    if (user) {
+      navigate(redirectFor(user), { replace: true });
+    }
+  }, [user, navigate]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
