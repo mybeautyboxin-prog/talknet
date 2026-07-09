@@ -1,0 +1,74 @@
+{
+  "theme": "Light Theme - Swiss Brutalist & Calm Minimalist",
+  "typography": {
+    "heading_font": "Manrope",
+    "body_font": "IBM Plex Sans",
+    "mono_font": "JetBrains Mono",
+    "rules": "Strictly avoid Inter, Roboto, and generic sans-serifs. Do not center-align indiscriminately. Use font-extrabold for H1, font-bold for H2, and font-normal for body text. Enforce tight tracking (tracking-tight) on headings."
+  },
+  "colors": {
+    "background": "#FCFCFB",
+    "surface": "#FFFFFF",
+    "border": "#E8E8E3",
+    "text_primary": "#111111",
+    "text_secondary": "#666666",
+    "primary_accent": "#3A4F41",
+    "success_active": "#4C7D5B",
+    "destructive": "#C84C4C",
+    "forbidden": ["#7351B7", "Purple", "Violet", "Gradients", "Generic SaaS Blue"]
+  },
+  "visual_enhancers": {
+    "shadows": "Extremely minimal. Avoid drop shadows on static elements. Use purely border-based separation (1px solid #E8E8E3). Floating bars (like the call control bar) can have a soft shadow: shadow-lg or shadow-[0_8px_32px_rgba(0,0,0,0.08)].",
+    "borders": "Crisp. 1px solid #E8E8E3.",
+    "radii": "Use rounded-md (6px) or rounded-sm (2px). No fully rounded pills except for the floating bottom audio control bar."
+  },
+  "component_name": "Shadcn UI (Customized)",
+  "component_path": "/app/frontend/src/components/ui/",
+  "grids": {
+    "dashboard": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "audio_room": "Dynamic grid. Up to 2 participants use large spanning tiles. 3+ use grid-cols-2 to grid-cols-4 with gap-4."
+  },
+  "layouts": {
+    "spacing": "Generous. Use Tailwind spacing scale p-8, p-12. Allow containers breathing room.",
+    "alignment": "Left-align text, headers, and form inputs. Avoid centered layouts unless explicitly for empty states."
+  },
+  "motion": {
+    "micro_interactions": "Hover states should subtly dim or shift background colors. transition-colors duration-200.",
+    "speaking_indicator": "Soft opacity pulse on a crisp green border (border-[#4C7D5B]) around the participant tile. Do not scale or move layout elements."
+  },
+  "accessibility": {
+    "testing": "All interactive elements (buttons, inputs, links, list items) MUST have a data-testid attribute.",
+    "focus_states": "High contrast focus rings. focus:ring-2 focus:ring-[#3A4F41]/20 focus:border-[#3A4F41]."
+  },
+  "media": {
+    "icons": "lucide-react, styled with stroke-width 1.5 for elegance.",
+    "avatars": "If no user image, use minimal typographic initials with a calm background (bg-[#F2F2F0] text-[#111111])."
+  },
+  "3d_libraries": "None. The calm minimal aesthetic requires a strict 2D layout without 3D webGL distractions.",
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwzfHxtaW5pbWFsaXN0JTIwY2xlYW4lMjB3b3Jrc3BhY2V8ZW58MHx8fHwxNzgzNjA1ODYyfDA&ixlib=rb-4.1.0&q=85",
+      "category": "landing_page_hero",
+      "description": "Minimal clean workspace, to be used as a subtle mood image on the landing page."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1511376979163-f804dff7ad7b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwyfHxwZW9wbGUlMjB0YWxraW5nJTIwb2ZmaWNlJTIwbWluaW1hbHxlbnwwfHx8fDE3ODM2MDU4NjJ8MA&ixlib=rb-4.1.0&q=85",
+      "category": "landing_features",
+      "description": "People collaborating in a calm setting, for the about/features section."
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Initialize React with JavaScript (.js extension), NOT TypeScript (.tsx).",
+    "Integrate LiveKit Cloud for audio conferencing. Implement logic to list rooms, join a room via code, and manage host permissions (kick/mute).",
+    "Use MongoDB + FastAPI for the backend. Use JWT for authentication.",
+    "The in-room interface should display a grid of participant tiles with speaking indicators and host controls.",
+    "Strip default Vercel-like styling from Shadcn UI. Apply the crisp, earthy-minimal aesthetic outlined in these guidelines."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Do not converge toward generic AI slop. Maintain high contrast, negative space, and strict typography rules.",
+    "Do not use dark colors as gradients. Use solid colors.",
+    "Do not center align the app container (.App { text-align: center; }).",
+    "Use sonner for toasts.",
+    "Include a data-testid on every interactive element."
+  ]
+}
