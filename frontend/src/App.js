@@ -7,8 +7,11 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Landing from "@/pages/Landing";
 import LoginPage from "@/pages/LoginPage";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import OwnerDashboard from "@/pages/OwnerDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
+import RoomListPage from "@/pages/RoomListPage";
 import RoomPage from "@/pages/RoomPage";
 
 function RootRedirect() {
@@ -17,7 +20,7 @@ function RootRedirect() {
   if (!user) return <Landing />;
   if (user.role === "platform_owner") return <Navigate to="/platform" replace />;
   if (user.role === "room_admin") return <Navigate to="/admin" replace />;
-  return <Navigate to="/room" replace />;
+  return <Navigate to="/rooms" replace />;
 }
 
 function App() {
@@ -40,30 +43,28 @@ function App() {
           <Routes>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/platform"
-              element={
-                <ProtectedRoute roles={["platform_owner"]}>
-                  <OwnerDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute roles={["room_admin"]}>
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/room"
-              element={
-                <ProtectedRoute roles={["room_admin", "user"]}>
-                  <RoomPage />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/platform" element={
+              <ProtectedRoute roles={["platform_owner"]}>
+                <OwnerDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin" element={
+              <ProtectedRoute roles={["room_admin"]}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/rooms" element={
+              <ProtectedRoute roles={["room_admin", "user"]}>
+                <RoomListPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/room" element={
+              <ProtectedRoute roles={["room_admin", "user"]}>
+                <RoomPage />
+              </ProtectedRoute>
+            } />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

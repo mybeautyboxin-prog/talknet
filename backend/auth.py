@@ -4,7 +4,7 @@ import jwt
 import secrets
 import string
 from datetime import datetime, timezone, timedelta
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from db import get_db
 
@@ -52,9 +52,60 @@ def decode_token(token: str) -> dict:
 # ------ Room codes ------
 def generate_room_code(length: int = 6) -> str:
     alphabet = string.ascii_uppercase + string.digits
-    # Avoid confusing chars
     alphabet = alphabet.replace("O", "").replace("0", "").replace("I", "").replace("1", "")
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def generate_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+# ------ Brute force / lockout ------
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_MINUTES = 15
+
+
+async def check_and_get_lockout(identifier: str):
+    db = get_db()
+    rec = await db.login_attempts.find_one({"identifier": identifier})
+    if not rec:
+        return None
+    locked_until = rec.get("locked_until")
+    if locked_until:
+        try:
+            lu = datetime.fromisoformat(locked_until)
+            if lu.tzinfo is None:
+                lu = lu.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+        if lu > datetime.now(timezone.utc):
+            return lu
+        # Expired lockout — clear it
+        await db.login_attempts.delete_one({"identifier": identifier})
+    return None
+
+
+async def record_failed_login(identifier: str) -> int:
+    db = get_db()
+    rec = await db.login_attempts.find_one({"identifier": identifier})
+    count = (rec.get("count", 0) if rec else 0) + 1
+    update = {"count": count, "last_attempt": datetime.now(timezone.utc).isoformat()}
+    if count >= MAX_LOGIN_ATTEMPTS:
+        update["locked_until"] = (
+            datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+        ).isoformat()
+        update["count"] = 0  # reset counter after locking
+    await db.login_attempts.update_one(
+        {"identifier": identifier},
+        {"$set": update, "$setOnInsert": {"identifier": identifier}},
+        upsert=True,
+    )
+    return count
+
+
+async def clear_login_attempts(identifier: str):
+    db = get_db()
+    await db.login_attempts.delete_one({"identifier": identifier})
 
 
 # ------ FastAPI deps ------

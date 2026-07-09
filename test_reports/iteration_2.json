@@ -1,0 +1,69 @@
+{
+  "summary": "Iteration-2 backend + frontend testing of TalkNet. Backend: 17/18 new tests PASS covering brute-force clear-on-success, suspended-user runtime enforcement (get_current_user returns 403), password reset (forgot -> token in logs -> reset -> login with new pw -> reuse blocked), forgot-password privacy 200 for unknown, multi-room CRUD (list/create/delete), last-room protection (400), 20-room cap (verified in code), /room/available for admin+user + 403 for owner, /room/token requires body (422) + cross-tenant 404, /room/session/start & end + duration, /platform/analytics + total_rooms in /stats. Frontend Playwright: login+forgot navigation, forgot-success, reset without token error, reset with token shows form; owner dashboard has 5 stat cards + analytics section + LineChart region + customer create + AlertDialog customer delete works; admin dashboard shows admin-room-list, add second room via new-room-name/submit, delete room via AlertDialog admin-room-delete-confirm-button, add + remove member via AlertDialog member-remove-confirm-button; user (role=user) redirects to /rooms and sees room-list-page. Iteration-1 regression suite still exists. ONE REAL BACKEND BUG: brute-force lockout is not enforced when backend is behind a k8s load balancer with multiple pods — identifier uses request.client.host which returns different pod IPs per request (observed 10.208.128.9 and 10.208.128.10 in login_attempts collection with 3 fails each instead of 5+1 on a single identifier).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/auth/login (brute-force lockout)",
+        "issue": "Lockout identifier is built from request.client.host which resolves to the backend pod IP, not the client IP. Since the service has multiple pods behind the k8s ingress, consecutive failed attempts from the same client are distributed across pods (verified: login_attempts has identifiers '10.208.128.9:<email>' and '10.208.128.10:<email>' with count=3 each after 5 real failures). Result: 6th failed login returned 401 not 429 — brute-force protection does NOT trigger in production. Fix: read the client IP from X-Forwarded-For (first entry) with fallback to request.client.host; better yet, key the counter on email alone (or email + user-agent hash) since the security posture we care about is account-level lockout.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/login (identifier hygiene)",
+        "issue": "Even with correct client IP, keying on ip:email means an attacker rotating IPs bypasses account lockout. Consider an additional email-only counter with a higher threshold (e.g., 20/hour) for defense-in-depth."
+      },
+      {
+        "endpoint": "POST /api/auth/forgot-password",
+        "issue": "reset link is logged via log.warning to stdout only — no email delivery. Acceptable for now (no Resend key) but the link ends up in backend.err.log which any operator with log access can read; consider redacting the token from logs once email is wired up."
+      },
+      {
+        "endpoint": "GET /api/platform/analytics",
+        "issue": "aggregation matches joined_at with a string ISO comparison ($gte since_iso). Works because ISO-8601 sorts lexicographically, but only when timezone suffix is consistent (currently everything is +00:00 UTC). If a session ever gets a different tz string this breaks silently. Consider storing joined_at as BSON Date for correctness."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Owner /platform (stats row)",
+        "issues": ["Playwright is_visible check returned false for owner-stat-total-customers and owner-stat-active-customers on very fast render (they display 0 initially before stats API resolves). Not a real UI bug — screenshot confirms all 5 stats render correctly. If you want more deterministic testability, guard the stat inner value node with a min-height or non-empty placeholder so is_visible is stable during loading."]
+      }
+    ],
+    "console_warnings": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_talknet_v2.py",
+    "/app/backend/tests/test_talknet_api.py",
+    "/app/test_reports/pytest/pytest_v2_results.xml"
+  ],
+  "action_items": [
+    "HIGH: Fix brute-force identifier — use X-Forwarded-For header (first hop) or drop the IP component entirely. Current implementation is a no-op in production because backend runs multiple pods.",
+    "LOW: Add email-only defense-in-depth counter for brute-force.",
+    "LOW: Store sessions.joined_at as BSON Date (not ISO string) to make range queries type-safe."
+  ],
+  "critical_code_review_comments": [
+    "auth_routes.login: brute-force identifier bug is the only real defect. Everything else (suspend runtime check in get_current_user, /reset-password token lookup + TTL, room CRUD scoping, session insert/update) is clean.",
+    "admin_routes.delete_room correctly guards last-room via count check — good.",
+    "room_routes._get_room_scoped correctly re-validates customer.status=='active' on every call, so a mid-session suspend blocks future token requests too (defense in depth alongside get_current_user).",
+    "platform_routes._assemble_customer runs N+1 queries (per-customer admin lookup + room lookup + counts). Fine at 2-3 customers; will get slow at 100+. Consider aggregating with $lookup once list grows.",
+    "models.CustomerPublic uses forward ref to RoomPublic + model_rebuild — works, but requires RoomPublic to be defined before CustomerPublic in the module (it is). Non-blocking.",
+    "auth.py record_failed_login uses $set+$setOnInsert with upsert=True — correct, but 'count':0 in $set after lockout means the same identifier can immediately start a new counter on next fail without re-locking until 5 more fails. That's intentional (post-lockout window), but combined with the pod-IP identifier bug, effectively neuters the rate limit. Fix identifier first, then reconsider count reset.",
+    "auth_routes.forgot_password: reset_link is built from request.headers['origin'] which is the frontend Origin — good — but falls back to os.environ.get('FRONTEND_URL','') which is empty, producing a link starting with '/reset-password?token=' (no host). Non-critical since it's only logged."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_talknet_v2.py (new)"
+  ],
+  "success_rate": {
+    "backend": "94% (17/18) — 1 failure is a real backend bug (brute-force lockout doesn't fire across pods)",
+    "frontend": "100% functional (all critical flows pass; 2 flaky is_visible checks are test-timing artifacts, not product bugs)"
+  },
+  "test_credentials": "Platform owner: xpertcctv.delhi@gmail.com / love@2001. All test customers/admins/members use prefixes TEST_V2_* and e2e_v2_* and are cleaned up per run.",
+  "seed_data_creation": "All per-run tenants are auto-torn-down. Pre-existing 'shanky' and 'ScreenTestCo' were left untouched as instructed. login_attempts collection has been manually cleaned for the test identifiers used.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend is covered by /app/backend/tests/test_talknet_api.py (iter-1) and /app/backend/tests/test_talknet_v2.py (iter-2). Both are pytest with fixtures for owner_token / suffix / customer_a. When running v2, either drop the login_attempts rows first or run with a unique suffix (fixture already does the latter). Brute-force test intentionally left as FAIL to expose the pod-IP identifier issue — do NOT fix in tests. Password-reset test reads the token from tail of backend.err.log so backend must log at WARNING or lower. LiveKit is still placeholder — RoomPage friendly error is expected; do not attempt real WebRTC.",
+  "rca of the issue": "Brute-force lockout: auth_routes.py:_identifier() calls request.client.host, which in Kubernetes with an nginx/ingress terminating the connection returns the *pod* IP of the backend replica that handled the request (not the client). With 2+ backend replicas, N failed attempts get load-balanced across replicas so no single (ip,email) identifier ever hits 5. Verified by inspecting the login_attempts collection which showed count=3 for one pod IP and count=3 for another after 5 client attempts (with an unrelated attempt bumping one to 3+1). Repro: fire 6 wrong logins against /api/auth/login from a single client → 6th returns 401 not 429. Mitigation: replace request.client.host with (request.headers.get('x-forwarded-for','').split(',')[0].strip() or request.client.host)."
+}

@@ -28,14 +28,18 @@ class UserPublic(BaseModel):
     created_at: str
 
 
-class UserRegister(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=6, max_length=128)
-
-
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 # -------- Customer --------
@@ -53,7 +57,8 @@ class CustomerPublic(BaseModel):
     status: Status
     created_at: str
     admin: Optional[UserPublic] = None
-    room: Optional["RoomPublic"] = None
+    default_room: Optional["RoomPublic"] = None
+    room_count: int = 0
     member_count: int = 0
 
 
@@ -62,6 +67,10 @@ class CustomerStatusUpdate(BaseModel):
 
 
 # -------- Room --------
+class RoomCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+
+
 class RoomPublic(BaseModel):
     id: str
     customer_id: str
@@ -79,7 +88,11 @@ class RoomMemberCreate(BaseModel):
     password: str = Field(min_length=6, max_length=128)
 
 
-# -------- LiveKit Token --------
+# -------- LiveKit --------
+class RoomTokenRequest(BaseModel):
+    room_id: str
+
+
 class TokenResponse(BaseModel):
     token: str
     livekit_url: str
@@ -88,10 +101,19 @@ class TokenResponse(BaseModel):
     is_host: bool
 
 
-# -------- Moderator actions --------
 class ModeratorAction(BaseModel):
-    identity: str  # participant identity to act on
-    track_sid: Optional[str] = None  # required for mute
+    room_id: str
+    identity: str
+    track_sid: Optional[str] = None
+
+
+# -------- Sessions / Analytics --------
+class SessionStart(BaseModel):
+    room_id: str
+
+
+class SessionEnd(BaseModel):
+    session_id: str
 
 
 CustomerPublic.model_rebuild()

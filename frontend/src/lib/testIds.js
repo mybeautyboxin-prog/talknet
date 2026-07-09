@@ -9,6 +9,16 @@ export const TID = {
   loginPassword: "login-password-input",
   loginSubmit: "login-submit-button",
   loginError: "login-error-message",
+  loginForgotLink: "login-forgot-link",
+
+  // Forgot / Reset password
+  forgotEmail: "forgot-email-input",
+  forgotSubmit: "forgot-submit-button",
+  forgotSuccess: "forgot-success-message",
+  resetPassword: "reset-password-input",
+  resetSubmit: "reset-submit-button",
+  resetSuccess: "reset-success-message",
+  resetError: "reset-error-message",
 
   // Layout / Nav
   navBrand: "nav-brand",
@@ -21,6 +31,8 @@ export const TID = {
   ownerStatTotal: "owner-stat-total-customers",
   ownerStatActive: "owner-stat-active-customers",
   ownerStatUsers: "owner-stat-total-users",
+  ownerStatRooms: "owner-stat-total-rooms",
+  ownerAnalyticsSection: "owner-analytics-section",
 
   // New Customer Dialog
   customerNameInput: "customer-name-input",
@@ -32,18 +44,30 @@ export const TID = {
   customerRowPrefix: "customer-row-",
   customerSuspendPrefix: "customer-suspend-btn-",
   customerDeletePrefix: "customer-delete-btn-",
+  customerDeleteConfirm: "customer-delete-confirm-button",
 
   // Admin Dashboard
-  adminRoomCode: "admin-room-code",
-  adminCopyRoomCode: "admin-copy-room-code",
+  adminAddRoomBtn: "admin-add-room-button",
+  adminRoomList: "admin-room-list",
+  adminRoomCardPrefix: "admin-room-card-",
+  adminRoomEnterPrefix: "admin-room-enter-btn-",
+  adminRoomCopyPrefix: "admin-room-copy-btn-",
+  adminRoomDeletePrefix: "admin-room-delete-btn-",
+  adminRoomDeleteConfirm: "admin-room-delete-confirm-button",
   adminAddMemberBtn: "admin-add-member-button",
   adminMemberList: "admin-member-list",
-  adminEnterRoom: "admin-enter-room-button",
   memberNameInput: "member-name-input",
   memberEmailInput: "member-email-input",
   memberPasswordInput: "member-password-input",
   memberCreateSubmit: "member-create-submit-button",
   memberRemovePrefix: "member-remove-btn-",
+  memberRemoveConfirm: "member-remove-confirm-button",
+  newRoomNameInput: "new-room-name-input",
+  newRoomSubmit: "new-room-submit-button",
+
+  // Room list (user-facing)
+  roomListPage: "room-list-page",
+  roomListEnterPrefix: "room-list-enter-btn-",
 
   // Room / PTT
   roomEnter: "room-enter-button",
@@ -53,4 +77,5 @@ export const TID = {
   roomStatusIndicator: "room-status-indicator",
   participantMutePrefix: "participant-mute-btn-",
   participantKickPrefix: "participant-kick-btn-",
+  participantKickConfirm: "participant-kick-confirm-button",
 };
