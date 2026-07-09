@@ -28,8 +28,9 @@ def _to_public(u: dict) -> dict:
 
 
 def _identifier(request: Request, email: str) -> str:
-    ip = request.client.host if request.client else "unknown"
-    return f"{ip}:{email.lower().strip()}"
+    xff = request.headers.get("x-forwarded-for", "")
+    client_ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
+    return f"{client_ip}:{email.lower().strip()}"
 
 
 @router.post("/login")

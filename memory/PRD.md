@@ -37,19 +37,21 @@ Build a production-ready browser-based audio conferencing platform using React +
 - Multi-tenant isolation: every API check derives room from `user.customer_id`
 - Design: Swiss-brutalist minimal (Manrope/IBM Plex Sans, sage green #3A4F41)
 
-## Phase 2 (BACKLOG — P1)
-- LiveKit Egress recording → object storage (S3 or Emergent object storage), recording list per customer
-- Rate limiting & brute-force protection on `/auth/login`
-- Password reset flow (email token)
-- Room presence log / activity timeline
-- Email invites for new members (Resend integration)
+## Phase 2 (DONE — 2026-02-09)
+- **Suspended-user runtime enforcement** — `get_current_user` returns 403 on every request if `user.status == "suspended"` (instant lockout after platform owner suspends).
+- **Password reset** — `/auth/forgot-password` (privacy-preserving 200) + `/auth/reset-password` with TTL-indexed token. Reset link printed to backend log until Resend key is added.
+- **Multi-room per customer** — admin can create up to 20 rooms with `/api/admin/rooms` CRUD; last-room protection; each with its own room_code. Users pick a room from `/rooms` before joining.
+- **Session analytics** — `/api/room/session/{start,end}` + `/api/platform/analytics` (daily minutes, top customers). LineChart on Owner console.
+- **Brute-force lockout** — 5 failed logins per (client_ip, email) → 429 for 15 min. Uses `X-Forwarded-For` (fixed after first test iteration flagged pod-IP bug).
+- **Polish** — shadcn AlertDialog for every destructive action (customer delete, room delete, member remove, kick participant) with dedicated `*-confirm-button` test-ids.
 
 ## Phase 3 (BACKLOG — P2)
-- Superadmin analytics dashboard (usage minutes per customer)
-- Multiple rooms per customer (elevate `admin_user_id` on customer to `admin_user_ids[]`)
-- Voice-activity metrics, bandwidth stats
-- Mobile app wrapper (PWA + hardware PTT key)
-- Billing (Stripe per-seat)
+- LiveKit Egress recordings → object storage (S3 or Emergent object storage)
+- Email invites & delivery via Resend (needs API key)
+- Superadmin analytics dashboard (usage minutes per customer over time — infra ready, needs viz upgrade)
+- Per-seat billing (Stripe)
+- Mobile PWA + hardware PTT key
+- Store `sessions.joined_at` as BSON Date for type-safe range queries
 
 ## Setup Notes
 - `.env` (backend): `MONGO_URL`, `DB_NAME`, `JWT_SECRET`, `OWNER_EMAIL`, `OWNER_PASSWORD`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`

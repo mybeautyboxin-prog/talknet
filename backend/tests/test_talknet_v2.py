@@ -160,7 +160,9 @@ def test_password_reset_flow(owner_token, suffix):
 
         # Extract this user's reset token from backend log — scan for the
         # target email marker and pull the following Token line (last match).
-        import re, subprocess, time as _t
+        import re
+        import subprocess
+        import time as _t
         _t.sleep(0.5)
         combined = ""
         for path in ("/var/log/supervisor/backend.err.log", "/var/log/supervisor/backend.out.log"):
