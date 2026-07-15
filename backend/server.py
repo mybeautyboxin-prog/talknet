@@ -17,6 +17,7 @@ from routes.auth_routes import router as auth_router
 from routes.platform_routes import router as platform_router
 from routes.admin_routes import router as admin_router
 from routes.room_routes import router as room_router
+from routes.recording_routes import router as recording_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ api_router.include_router(auth_router)
 api_router.include_router(platform_router)
 api_router.include_router(admin_router)
 api_router.include_router(room_router)
+api_router.include_router(recording_router)
 
 app.include_router(api_router)
 

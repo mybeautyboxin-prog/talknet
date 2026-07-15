@@ -68,5 +68,18 @@ export const TID = {
   participantMutePrefix: "participant-mute-btn-",
   participantKickPrefix: "participant-kick-btn-",
   participantKickConfirm: "participant-kick-confirm-button",
+  participantGrantMicPrefix: "participant-grant-mic-btn-",
   roomContinuousToggle: "room-continuous-mic-toggle",
+  roomHostBroadcastBanner: "room-host-broadcasting-banner",
+  roomRecordToggle: "room-record-toggle-button",
+  roomDevicePicker: "room-device-picker-button",
+  roomMicSelect: "room-mic-select",
+  roomSpeakerSelect: "room-speaker-select",
+
+  // Admin recordings list
+  adminRecordingsSection: "admin-recordings-section",
+  adminRecordingRowPrefix: "admin-recording-row-",
+  adminRecordingDownloadPrefix: "admin-recording-download-btn-",
+  adminRecordingDeletePrefix: "admin-recording-delete-btn-",
+  adminRecordingDeleteConfirm: "admin-recording-delete-confirm-button",
 };

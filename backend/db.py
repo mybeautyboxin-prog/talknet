@@ -64,6 +64,10 @@ async def create_indexes():
     await db.sessions.create_index("joined_at")
     await db.sessions.create_index("user_id")
 
+    # ---- Recordings ----
+    await db.recordings.create_index("room_id")
+    await db.recordings.create_index("created_at")
+
 
 async def migrate_to_3_role_model():
     """
