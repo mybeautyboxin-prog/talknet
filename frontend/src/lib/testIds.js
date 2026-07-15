@@ -1,4 +1,4 @@
-// Centralised data-testid strings
+// Centralised data-testid strings (v3: 3-role model)
 export const TID = {
   // Landing
   landingHero: "landing-hero",
@@ -25,35 +25,31 @@ export const TID = {
   navLogout: "nav-logout-button",
   navUserBadge: "nav-user-badge",
 
-  // Owner Dashboard
-  ownerNewCustomerBtn: "owner-new-customer-button",
-  ownerCustomerList: "owner-customer-list",
-  ownerStatTotal: "owner-stat-total-customers",
-  ownerStatActive: "owner-stat-active-customers",
+  // Owner Dashboard (Rooms)
+  ownerNewRoomBtn: "owner-new-room-button",
+  ownerRoomList: "owner-room-list",
+  ownerStatTotal: "owner-stat-total-rooms",
+  ownerStatActive: "owner-stat-active-rooms",
+  ownerStatAdmins: "owner-stat-total-admins",
   ownerStatUsers: "owner-stat-total-users",
-  ownerStatRooms: "owner-stat-total-rooms",
   ownerAnalyticsSection: "owner-analytics-section",
 
-  // New Customer Dialog
-  customerNameInput: "customer-name-input",
+  // Provision Room Dialog
+  roomNameInput: "room-name-input",
   adminNameInput: "admin-name-input",
   adminEmailInput: "admin-email-input",
   adminPasswordInput: "admin-password-input",
-  roomNameInput: "room-name-input",
-  createCustomerSubmit: "create-customer-submit-button",
-  customerRowPrefix: "customer-row-",
-  customerSuspendPrefix: "customer-suspend-btn-",
-  customerDeletePrefix: "customer-delete-btn-",
-  customerDeleteConfirm: "customer-delete-confirm-button",
+  createRoomSubmit: "create-room-submit-button",
+  roomRowPrefix: "room-row-",
+  roomSuspendPrefix: "room-suspend-btn-",
+  roomDeletePrefix: "room-delete-btn-",
+  roomDeleteConfirm: "room-delete-confirm-button",
 
-  // Admin Dashboard
-  adminAddRoomBtn: "admin-add-room-button",
-  adminRoomList: "admin-room-list",
-  adminRoomCardPrefix: "admin-room-card-",
-  adminRoomEnterPrefix: "admin-room-enter-btn-",
-  adminRoomCopyPrefix: "admin-room-copy-btn-",
-  adminRoomDeletePrefix: "admin-room-delete-btn-",
-  adminRoomDeleteConfirm: "admin-room-delete-confirm-button",
+  // Admin Dashboard (single room)
+  adminRoomName: "admin-room-name",
+  adminRoomCode: "admin-room-code",
+  adminCopyRoomCode: "admin-copy-room-code",
+  adminEnterRoomBtn: "admin-enter-room-button",
   adminAddMemberBtn: "admin-add-member-button",
   adminMemberList: "admin-member-list",
   memberNameInput: "member-name-input",
@@ -62,12 +58,6 @@ export const TID = {
   memberCreateSubmit: "member-create-submit-button",
   memberRemovePrefix: "member-remove-btn-",
   memberRemoveConfirm: "member-remove-confirm-button",
-  newRoomNameInput: "new-room-name-input",
-  newRoomSubmit: "new-room-submit-button",
-
-  // Room list (user-facing)
-  roomListPage: "room-list-page",
-  roomListEnterPrefix: "room-list-enter-btn-",
 
   // Room / PTT
   roomEnter: "room-enter-button",

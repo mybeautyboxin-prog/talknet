@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Building2, Trash2, Pause, Play, Copy, Check, TrendingUp } from "lucide-react";
+import { Plus, Radio, Trash2, Pause, Play, Copy, Check, TrendingUp } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api, formatApiError } from "@/lib/api";
 import { TID } from "@/lib/testIds";
@@ -19,27 +19,27 @@ const Stat = ({ label, value, testId }) => (
 );
 
 export default function OwnerDashboard() {
-  const [customers, setCustomers] = useState([]);
-  const [stats, setStats] = useState({ total_customers: 0, active_customers: 0, total_users: 0, total_admins: 0, total_rooms: 0 });
-  const [analytics, setAnalytics] = useState({ daily: [], top_customers: [], total_sessions: 0, total_minutes: 0 });
+  const [rooms, setRooms] = useState([]);
+  const [stats, setStats] = useState({ total_rooms: 0, active_rooms: 0, total_admins: 0, total_users: 0 });
+  const [analytics, setAnalytics] = useState({ daily: [], top_rooms: [], total_sessions: 0, total_minutes: 0 });
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
-  const [customerToDelete, setCustomerToDelete] = useState(null);
+  const [roomToDelete, setRoomToDelete] = useState(null);
 
-  const [form, setForm] = useState({ customer_name: "", admin_name: "", admin_email: "", admin_password: "", room_name: "" });
+  const [form, setForm] = useState({ room_name: "", admin_name: "", admin_email: "", admin_password: "" });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [c, s, a] = await Promise.all([
-        api.get("/platform/customers"),
+      const [r, s, a] = await Promise.all([
+        api.get("/platform/rooms"),
         api.get("/platform/stats"),
         api.get("/platform/analytics?days=14"),
       ]);
-      setCustomers(c.data.customers);
+      setRooms(r.data.rooms);
       setStats(s.data);
       setAnalytics(a.data);
     } catch (e) { toast.error(formatApiError(e)); }
@@ -52,31 +52,31 @@ export default function OwnerDashboard() {
     e.preventDefault();
     setError(""); setCreating(true);
     try {
-      await api.post("/platform/customers", form);
-      toast.success(`Customer "${form.customer_name}" created`);
+      await api.post("/platform/rooms", form);
+      toast.success(`Room "${form.room_name}" provisioned`);
       setDialogOpen(false);
-      setForm({ customer_name: "", admin_name: "", admin_email: "", admin_password: "", room_name: "" });
+      setForm({ room_name: "", admin_name: "", admin_email: "", admin_password: "" });
       loadAll();
     } catch (err) {
       const msg = formatApiError(err); setError(msg); toast.error(msg);
     } finally { setCreating(false); }
   };
 
-  const toggleStatus = async (c) => {
-    const next = c.status === "active" ? "suspended" : "active";
+  const toggleStatus = async (r) => {
+    const next = r.status === "active" ? "suspended" : "active";
     try {
-      await api.patch(`/platform/customers/${c.id}`, { status: next });
-      toast.success(`Customer ${next}`);
+      await api.patch(`/platform/rooms/${r.id}`, { status: next });
+      toast.success(`Room ${next}`);
       loadAll();
     } catch (e) { toast.error(formatApiError(e)); }
   };
 
   const doDelete = async () => {
-    if (!customerToDelete) return;
+    if (!roomToDelete) return;
     try {
-      await api.delete(`/platform/customers/${customerToDelete.id}`);
-      toast.success("Customer deleted");
-      setCustomerToDelete(null);
+      await api.delete(`/platform/rooms/${roomToDelete.id}`);
+      toast.success("Room deleted");
+      setRoomToDelete(null);
       loadAll();
     } catch (e) { toast.error(formatApiError(e)); }
   };
@@ -94,29 +94,25 @@ export default function OwnerDashboard() {
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
           <div>
             <div className="text-[11px] tracking-widest uppercase text-[#666666] mb-2">Platform Console</div>
-            <h1 className="text-4xl font-extrabold tracking-tight">Customers</h1>
+            <h1 className="text-4xl font-extrabold tracking-tight">Rooms</h1>
             <p className="text-sm text-[#666666] mt-2 max-w-lg">
-              Each customer is provisioned with one room admin and one default room. Admins can add more channels.
+              Each room is provisioned with one Room Admin. The admin manages that room only. Room admins cannot create or see any other rooms.
             </p>
           </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button data-testid={TID.ownerNewCustomerBtn} className="bg-[#3A4F41] hover:bg-[#2f4136] rounded-md h-11 px-5 text-[#FCFCFB]">
-                <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} /> New Customer
+              <Button data-testid={TID.ownerNewRoomBtn} className="bg-[#3A4F41] hover:bg-[#2f4136] rounded-md h-11 px-5 text-[#FCFCFB]">
+                <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} /> Provision Room
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md rounded-md bg-white border-[#E8E8E3]">
               <DialogHeader>
-                <DialogTitle className="font-extrabold tracking-tight">Provision a new customer</DialogTitle>
-                <DialogDescription className="text-[#666]">Creates the customer, a room admin, and a default room.</DialogDescription>
+                <DialogTitle className="font-extrabold tracking-tight">Provision a new room</DialogTitle>
+                <DialogDescription className="text-[#666]">Creates the room and its Room Admin in one step.</DialogDescription>
               </DialogHeader>
               <form onSubmit={submitCreate} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label>Customer name</Label>
-                  <Input required data-testid={TID.customerNameInput} value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} className="h-10 rounded-md border-[#E8E8E3]" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Default room name</Label>
+                  <Label>Room name</Label>
                   <Input required data-testid={TID.roomNameInput} value={form.room_name} onChange={(e) => setForm({ ...form, room_name: e.target.value })} className="h-10 rounded-md border-[#E8E8E3]" />
                 </div>
                 <div className="border-t border-[#E8E8E3] pt-4 space-y-4">
@@ -136,8 +132,8 @@ export default function OwnerDashboard() {
                 </div>
                 {error && <div className="text-sm text-[#C84C4C] border-l-2 border-[#C84C4C] pl-3">{error}</div>}
                 <DialogFooter>
-                  <Button type="submit" disabled={creating} data-testid={TID.createCustomerSubmit} className="bg-[#3A4F41] hover:bg-[#2f4136] text-[#FCFCFB] rounded-md h-10">
-                    {creating ? "Creating…" : "Create customer"}
+                  <Button type="submit" disabled={creating} data-testid={TID.createRoomSubmit} className="bg-[#3A4F41] hover:bg-[#2f4136] text-[#FCFCFB] rounded-md h-10">
+                    {creating ? "Provisioning…" : "Provision room"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -145,16 +141,13 @@ export default function OwnerDashboard() {
           </Dialog>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
-          <Stat label="Customers" value={stats.total_customers} testId={TID.ownerStatTotal} />
-          <Stat label="Active" value={stats.active_customers} testId={TID.ownerStatActive} />
-          <Stat label="Rooms" value={stats.total_rooms} testId={TID.ownerStatRooms} />
-          <Stat label="Admins" value={stats.total_admins} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+          <Stat label="Total rooms" value={stats.total_rooms} testId={TID.ownerStatTotal} />
+          <Stat label="Active" value={stats.active_rooms} testId={TID.ownerStatActive} />
+          <Stat label="Room admins" value={stats.total_admins} testId={TID.ownerStatAdmins} />
           <Stat label="End users" value={stats.total_users} testId={TID.ownerStatUsers} />
         </div>
 
-        {/* Analytics */}
         <div className="border border-[#E8E8E3] bg-white rounded-md p-6 mb-10" data-testid={TID.ownerAnalyticsSection}>
           <div className="flex items-end justify-between mb-6">
             <div>
@@ -191,13 +184,13 @@ export default function OwnerDashboard() {
               </ResponsiveContainer>
             )}
           </div>
-          {analytics.top_customers.length > 0 && (
+          {analytics.top_rooms?.length > 0 && (
             <div className="mt-6 border-t border-[#E8E8E3] pt-4">
-              <div className="text-[11px] tracking-widest uppercase text-[#666] mb-3">Top customers by minutes</div>
+              <div className="text-[11px] tracking-widest uppercase text-[#666] mb-3">Top rooms by minutes</div>
               <div className="space-y-2">
-                {analytics.top_customers.map((t) => (
-                  <div key={t.customer_id} className="flex items-center justify-between text-sm">
-                    <span className="font-semibold">{t.customer_name}</span>
+                {analytics.top_rooms.map((t) => (
+                  <div key={t.room_id} className="flex items-center justify-between text-sm">
+                    <span className="font-semibold">{t.room_name}</span>
                     <span className="font-mono text-[#666]">{t.minutes} min · {t.sessions} sessions</span>
                   </div>
                 ))}
@@ -206,50 +199,47 @@ export default function OwnerDashboard() {
           )}
         </div>
 
-        {/* Customer list */}
-        <div className="border border-[#E8E8E3] bg-white rounded-md overflow-hidden" data-testid={TID.ownerCustomerList}>
+        <div className="border border-[#E8E8E3] bg-white rounded-md overflow-hidden" data-testid={TID.ownerRoomList}>
           <div className="grid grid-cols-12 px-6 py-3 text-[11px] tracking-widest uppercase text-[#666] border-b border-[#E8E8E3] bg-[#FAFAF7]">
-            <div className="col-span-4">Customer</div>
+            <div className="col-span-3">Room</div>
             <div className="col-span-3">Room admin</div>
-            <div className="col-span-2">Default code</div>
-            <div className="col-span-1">Rooms</div>
+            <div className="col-span-2">Code</div>
+            <div className="col-span-2">Users</div>
             <div className="col-span-2 text-right">Actions</div>
           </div>
           {loading ? (
-            <div className="p-10 text-center text-sm text-[#666]">Loading customers…</div>
-          ) : customers.length === 0 ? (
+            <div className="p-10 text-center text-sm text-[#666]">Loading rooms…</div>
+          ) : rooms.length === 0 ? (
             <div className="p-16 text-center">
-              <Building2 className="w-8 h-8 mx-auto text-[#3A4F41] mb-3" strokeWidth={1.25} />
-              <div className="font-bold text-lg tracking-tight">No customers yet</div>
-              <div className="text-sm text-[#666] mt-1">Create your first customer to get started.</div>
+              <Radio className="w-8 h-8 mx-auto text-[#3A4F41] mb-3" strokeWidth={1.25} />
+              <div className="font-bold text-lg tracking-tight">No rooms yet</div>
+              <div className="text-sm text-[#666] mt-1">Provision your first room to get started.</div>
             </div>
-          ) : customers.map((c) => (
-            <div key={c.id} data-testid={`${TID.customerRowPrefix}${c.id}`} className="grid grid-cols-12 items-center px-6 py-4 border-b border-[#E8E8E3] last:border-b-0 hover:bg-[#FAFAF7]">
-              <div className="col-span-4">
-                <div className="font-semibold">{c.name}</div>
+          ) : rooms.map((r) => (
+            <div key={r.id} data-testid={`${TID.roomRowPrefix}${r.id}`} className="grid grid-cols-12 items-center px-6 py-4 border-b border-[#E8E8E3] last:border-b-0 hover:bg-[#FAFAF7]">
+              <div className="col-span-3">
+                <div className="font-semibold">{r.name}</div>
                 <div className="text-xs text-[#666] mt-0.5">
-                  <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${c.status === "active" ? "bg-[#4C7D5B]" : "bg-[#C84C4C]"}`} />
-                  {c.status} · {c.member_count}/15 users
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${r.status === "active" ? "bg-[#4C7D5B]" : "bg-[#C84C4C]"}`} />
+                  {r.status}
                 </div>
               </div>
               <div className="col-span-3 text-sm">
-                <div>{c.admin?.name}</div>
-                <div className="text-xs text-[#666] font-mono">{c.admin?.email}</div>
+                <div>{r.admin?.name || <span className="text-[#666] italic">unassigned</span>}</div>
+                <div className="text-xs text-[#666] font-mono">{r.admin?.email}</div>
               </div>
               <div className="col-span-2">
-                {c.default_room && (
-                  <button onClick={() => copyCode(c.default_room.room_code, c.id)} className="inline-flex items-center gap-1.5 text-xs font-mono border border-[#E8E8E3] rounded-sm px-2 py-1 hover:bg-white">
-                    {c.default_room.room_code}
-                    {copiedId === c.id ? <Check className="w-3 h-3 text-[#4C7D5B]" /> : <Copy className="w-3 h-3 text-[#666]" />}
-                  </button>
-                )}
+                <button onClick={() => copyCode(r.room_code, r.id)} className="inline-flex items-center gap-1.5 text-xs font-mono border border-[#E8E8E3] rounded-sm px-2 py-1 hover:bg-white">
+                  {r.room_code}
+                  {copiedId === r.id ? <Check className="w-3 h-3 text-[#4C7D5B]" /> : <Copy className="w-3 h-3 text-[#666]" />}
+                </button>
               </div>
-              <div className="col-span-1 text-sm font-mono">{c.room_count}</div>
+              <div className="col-span-2 text-sm font-mono">{r.member_count}/15</div>
               <div className="col-span-2 flex justify-end gap-1.5">
-                <Button data-testid={`${TID.customerSuspendPrefix}${c.id}`} size="sm" variant="outline" onClick={() => toggleStatus(c)} className="h-8 rounded-md border-[#E8E8E3]">
-                  {c.status === "active" ? <><Pause className="w-3 h-3 mr-1" strokeWidth={2} /> Suspend</> : <><Play className="w-3 h-3 mr-1" strokeWidth={2} /> Resume</>}
+                <Button data-testid={`${TID.roomSuspendPrefix}${r.id}`} size="sm" variant="outline" onClick={() => toggleStatus(r)} className="h-8 rounded-md border-[#E8E8E3]">
+                  {r.status === "active" ? <><Pause className="w-3 h-3 mr-1" strokeWidth={2} /> Suspend</> : <><Play className="w-3 h-3 mr-1" strokeWidth={2} /> Resume</>}
                 </Button>
-                <Button data-testid={`${TID.customerDeletePrefix}${c.id}`} size="sm" variant="outline" onClick={() => setCustomerToDelete(c)} className="h-8 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]">
+                <Button data-testid={`${TID.roomDeletePrefix}${r.id}`} size="sm" variant="outline" onClick={() => setRoomToDelete(r)} className="h-8 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]">
                   <Trash2 className="w-3 h-3" strokeWidth={2} />
                 </Button>
               </div>
@@ -258,18 +248,18 @@ export default function OwnerDashboard() {
         </div>
       </div>
 
-      <AlertDialog open={!!customerToDelete} onOpenChange={(o) => !o && setCustomerToDelete(null)}>
+      <AlertDialog open={!!roomToDelete} onOpenChange={(o) => !o && setRoomToDelete(null)}>
         <AlertDialogContent className="bg-white border-[#E8E8E3] rounded-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-extrabold tracking-tight">Delete "{customerToDelete?.name}"?</AlertDialogTitle>
+            <AlertDialogTitle className="font-extrabold tracking-tight">Delete "{roomToDelete?.name}"?</AlertDialogTitle>
             <AlertDialogDescription className="text-[#666]">
-              This removes the customer, its room admin, all end users, all rooms, and all session history. Cannot be undone.
+              This removes the room, its Room Admin, all its users, and all its session history. Cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-md">Cancel</AlertDialogCancel>
-            <AlertDialogAction data-testid={TID.customerDeleteConfirm} onClick={doDelete} className="rounded-md bg-[#C84C4C] hover:bg-[#a63c3c] text-white">
-              Delete customer
+            <AlertDialogAction data-testid={TID.roomDeleteConfirm} onClick={doDelete} className="rounded-md bg-[#C84C4C] hover:bg-[#a63c3c] text-white">
+              Delete room
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

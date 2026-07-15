@@ -9,7 +9,7 @@ import logging
 from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
-from db import get_db, create_indexes
+from db import get_db, create_indexes, migrate_to_3_role_model
 from auth import hash_password, verify_password
 from models import now_iso, new_id
 
@@ -21,7 +21,7 @@ from routes.room_routes import router as room_router
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="TalkNet — Audio Conferencing Platform", version="0.1.0")
+app = FastAPI(title="TalkNet — Audio Conferencing Platform", version="0.3.0")
 
 api_router = APIRouter(prefix="/api")
 
@@ -64,13 +64,12 @@ async def seed_platform_owner():
             "password_hash": hash_password(password),
             "name": "Platform Owner",
             "role": "platform_owner",
-            "customer_id": None,
+            "room_id": None,
             "status": "active",
             "created_at": now_iso(),
         })
         logger.info(f"Seeded platform owner: {email}")
     else:
-        # Keep password in sync with env
         if not verify_password(password, existing.get("password_hash", "")):
             await db.users.update_one(
                 {"email": email},
@@ -81,6 +80,7 @@ async def seed_platform_owner():
 
 @app.on_event("startup")
 async def _startup():
+    await migrate_to_3_role_model()
     await create_indexes()
     await seed_platform_owner()
 

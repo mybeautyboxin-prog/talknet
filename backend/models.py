@@ -23,7 +23,7 @@ class UserPublic(BaseModel):
     email: EmailStr
     name: str
     role: Role
-    customer_id: Optional[str] = None
+    room_id: Optional[str] = None
     status: Status = "active"
     created_at: str
 
@@ -42,46 +42,33 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=6, max_length=128)
 
 
-# -------- Customer --------
-class CustomerCreate(BaseModel):
-    customer_name: str = Field(min_length=2, max_length=80)
+# -------- Room --------
+class RoomProvision(BaseModel):
+    """Platform Owner provisions a room by supplying room details + its admin."""
+    room_name: str = Field(min_length=2, max_length=80)
     admin_name: str = Field(min_length=2, max_length=80)
     admin_email: EmailStr
     admin_password: str = Field(min_length=6, max_length=128)
-    room_name: str = Field(min_length=2, max_length=80)
 
 
-class CustomerPublic(BaseModel):
-    id: str
-    name: str
+class RoomStatusUpdate(BaseModel):
     status: Status
-    created_at: str
-    admin: Optional[UserPublic] = None
-    default_room: Optional["RoomPublic"] = None
-    room_count: int = 0
-    member_count: int = 0
-
-
-class CustomerStatusUpdate(BaseModel):
-    status: Status
-
-
-# -------- Room --------
-class RoomCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=80)
 
 
 class RoomPublic(BaseModel):
     id: str
-    customer_id: str
     name: str
     room_code: str
     livekit_room_name: str
     max_participants: int = 15
+    status: Status = "active"
+    admin_user_id: Optional[str] = None
+    admin: Optional[UserPublic] = None
+    member_count: int = 0
     created_at: str
 
 
-# -------- Room Members (Users under an admin) --------
+# -------- Members (Users under a Room Admin) --------
 class RoomMemberCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     email: EmailStr
@@ -114,6 +101,3 @@ class SessionStart(BaseModel):
 
 class SessionEnd(BaseModel):
     session_id: str
-
-
-CustomerPublic.model_rebuild()

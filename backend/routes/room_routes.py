@@ -33,54 +33,65 @@ def _lk_client():
     return lk_api.LiveKitAPI(url, key, secret)
 
 
-async def _get_room_scoped(db, user: dict, room_id: str):
+async def _get_scoped_room(db, user: dict, room_id: str):
+    """Return the room, enforcing that current user has access to it."""
     if user["role"] == "platform_owner":
         raise HTTPException(status_code=403, detail="Platform owner cannot join rooms")
-    cid = user.get("customer_id")
-    if not cid:
-        raise HTTPException(status_code=400, detail="No customer assigned")
-    customer = await db.customers.find_one({"id": cid}, {"_id": 0})
-    if not customer or customer.get("status") != "active":
-        raise HTTPException(status_code=403, detail="Customer is suspended")
-    room = await db.rooms.find_one({"id": room_id, "customer_id": cid}, {"_id": 0})
+    room = await db.rooms.find_one({"id": room_id}, {"_id": 0})
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    return customer, room
+    if room.get("status") == "suspended":
+        raise HTTPException(status_code=403, detail="Room is suspended")
+
+    if user["role"] == "room_admin":
+        if room.get("admin_user_id") != user["id"]:
+            raise HTTPException(status_code=404, detail="Room not found")
+    elif user["role"] == "user":
+        if user.get("room_id") != room["id"]:
+            raise HTTPException(status_code=404, detail="Room not found")
+    return room
 
 
-# ---------- List rooms available to the current user ----------
 @router.get("/available")
 async def list_available(user: dict = Depends(get_current_user)):
+    """Room admin: their one assigned room. User: their one assigned room."""
     if user["role"] == "platform_owner":
         raise HTTPException(status_code=403, detail="Owners have no rooms")
-    cid = user.get("customer_id")
-    if not cid:
-        raise HTTPException(status_code=400, detail="No customer assigned")
     db = get_db()
-    docs = await db.rooms.find({"customer_id": cid}, {"_id": 0}).sort("created_at", 1).to_list(100)
-    return {"rooms": [RoomPublic(**d).model_dump() for d in docs]}
+    if user["role"] == "room_admin":
+        room = await db.rooms.find_one({"admin_user_id": user["id"]}, {"_id": 0})
+    else:
+        rid = user.get("room_id")
+        room = await db.rooms.find_one({"id": rid}, {"_id": 0}) if rid else None
+    rooms = []
+    if room:
+        rooms.append(RoomPublic(
+            id=room["id"], name=room["name"], room_code=room["room_code"],
+            livekit_room_name=room["livekit_room_name"],
+            max_participants=room.get("max_participants", 15),
+            status=room.get("status", "active"),
+            admin_user_id=room.get("admin_user_id"),
+            created_at=room["created_at"],
+        ).model_dump())
+    return {"rooms": rooms}
 
 
 @router.get("/info/{room_id}")
 async def room_info(room_id: str, user: dict = Depends(get_current_user)):
     db = get_db()
-    _, room = await _get_room_scoped(db, user, room_id)
+    room = await _get_scoped_room(db, user, room_id)
     return {"room": room}
 
 
 @router.post("/token", response_model=TokenResponse)
 async def get_livekit_token(payload: RoomTokenRequest, user: dict = Depends(get_current_user)):
     db = get_db()
-    _, room = await _get_room_scoped(db, user, payload.room_id)
-
+    room = await _get_scoped_room(db, user, payload.room_id)
     url, key, secret = _lk_creds()
     if not (url and key and secret):
         raise HTTPException(status_code=500, detail="LiveKit not configured")
 
     is_host = user["role"] == "room_admin"
-    identity = user["id"]
-    display_name = user["name"]
-
     grants = lk_api.VideoGrants(
         room_join=True,
         room=room["livekit_room_name"],
@@ -91,27 +102,26 @@ async def get_livekit_token(payload: RoomTokenRequest, user: dict = Depends(get_
     )
     token = (
         lk_api.AccessToken(key, secret)
-        .with_identity(identity)
-        .with_name(display_name)
+        .with_identity(user["id"])
+        .with_name(user["name"])
         .with_grants(grants)
-        .with_metadata(f'{{"role":"{user["role"]}","name":"{display_name}"}}')
+        .with_metadata(f'{{"role":"{user["role"]}","name":"{user["name"]}"}}')
     )
     return TokenResponse(
         token=token.to_jwt(),
         livekit_url=url,
         room_name=room["livekit_room_name"],
-        identity=identity,
+        identity=user["id"],
         is_host=is_host,
     )
 
 
-# ---------- Moderation ----------
 @router.post("/mute")
 async def mute_participant(action: ModeratorAction, user: dict = Depends(require_roles("room_admin"))):
     if not action.track_sid:
         raise HTTPException(status_code=400, detail="track_sid required")
     db = get_db()
-    _, room = await _get_room_scoped(db, user, action.room_id)
+    room = await _get_scoped_room(db, user, action.room_id)
     client = _lk_client()
     try:
         await client.room.mute_published_track(
@@ -130,7 +140,7 @@ async def mute_participant(action: ModeratorAction, user: dict = Depends(require
 @router.post("/kick")
 async def kick_participant(action: ModeratorAction, user: dict = Depends(require_roles("room_admin"))):
     db = get_db()
-    _, room = await _get_room_scoped(db, user, action.room_id)
+    room = await _get_scoped_room(db, user, action.room_id)
     client = _lk_client()
     try:
         await client.room.remove_participant(
@@ -144,15 +154,13 @@ async def kick_participant(action: ModeratorAction, user: dict = Depends(require
     return {"ok": True}
 
 
-# ---------- Session analytics ----------
 @router.post("/session/start")
 async def session_start(payload: SessionStart, user: dict = Depends(get_current_user)):
     db = get_db()
-    _, room = await _get_room_scoped(db, user, payload.room_id)
+    room = await _get_scoped_room(db, user, payload.room_id)
     session_id = new_id()
     await db.sessions.insert_one({
         "id": session_id,
-        "customer_id": user["customer_id"],
         "room_id": room["id"],
         "room_name": room["name"],
         "user_id": user["id"],

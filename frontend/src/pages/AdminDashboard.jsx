@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserPlus, Copy, Check, Trash2, Radio, Users2, Plus } from "lucide-react";
+import { UserPlus, Copy, Check, Trash2, Radio, Users2 } from "lucide-react";
 import { api, formatApiError } from "@/lib/api";
 import { TID } from "@/lib/testIds";
 import AppLayout from "@/components/AppLayout";
@@ -12,23 +12,14 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 
 export default function AdminDashboard() {
-  const [rooms, setRooms] = useState([]);
+  const [room, setRoom] = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [copiedId, setCopiedId] = useState(null);
+  const [copied, setCopied] = useState(false);
 
-  // Add room dialog
-  const [roomDialogOpen, setRoomDialogOpen] = useState(false);
-  const [newRoomName, setNewRoomName] = useState("");
-  const [creatingRoom, setCreatingRoom] = useState(false);
-
-  // Add member dialog
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [memberForm, setMemberForm] = useState({ name: "", email: "", password: "" });
   const [creatingMember, setCreatingMember] = useState(false);
-
-  // Confirm-delete dialogs
-  const [roomToDelete, setRoomToDelete] = useState(null);
   const [memberToRemove, setMemberToRemove] = useState(null);
 
   const navigate = useNavigate();
@@ -36,26 +27,14 @@ export default function AdminDashboard() {
   const load = async () => {
     setLoading(true);
     try {
-      const [r, m] = await Promise.all([api.get("/admin/rooms"), api.get("/admin/members")]);
-      setRooms(r.data.rooms);
+      const [r, m] = await Promise.all([api.get("/admin/room"), api.get("/admin/members")]);
+      setRoom(r.data);
       setMembers(m.data.members);
     } catch (e) { toast.error(formatApiError(e)); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
-
-  const submitCreateRoom = async (e) => {
-    e.preventDefault();
-    setCreatingRoom(true);
-    try {
-      await api.post("/admin/rooms", { name: newRoomName });
-      toast.success(`Room "${newRoomName}" created`);
-      setRoomDialogOpen(false); setNewRoomName("");
-      load();
-    } catch (err) { toast.error(formatApiError(err)); }
-    finally { setCreatingRoom(false); }
-  };
 
   const submitAddMember = async (e) => {
     e.preventDefault();
@@ -70,16 +49,6 @@ export default function AdminDashboard() {
     finally { setCreatingMember(false); }
   };
 
-  const doDeleteRoom = async () => {
-    if (!roomToDelete) return;
-    try {
-      await api.delete(`/admin/rooms/${roomToDelete.id}`);
-      toast.success("Room deleted");
-      setRoomToDelete(null);
-      load();
-    } catch (e) { toast.error(formatApiError(e)); }
-  };
-
   const doRemoveMember = async () => {
     if (!memberToRemove) return;
     try {
@@ -90,97 +59,69 @@ export default function AdminDashboard() {
     } catch (e) { toast.error(formatApiError(e)); }
   };
 
-  const copyCode = async (code, id) => {
-    await navigator.clipboard.writeText(code);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 1500);
+  const copyCode = async () => {
+    if (!room) return;
+    await navigator.clipboard.writeText(room.room_code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   if (loading) return <AppLayout><div className="p-12 text-sm text-[#666]">Loading…</div></AppLayout>;
+  if (!room) return <AppLayout><div className="p-12 text-sm text-[#666]">You have no assigned room. Please contact the platform owner.</div></AppLayout>;
 
   return (
     <AppLayout>
-      <div className="max-w-7xl mx-auto px-8 py-10">
-        {/* Rooms */}
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
-          <div>
-            <div className="text-[11px] tracking-widest uppercase text-[#666] mb-2">Your Rooms</div>
-            <h1 className="text-4xl font-extrabold tracking-tight">Channels</h1>
-            <p className="text-sm text-[#666] mt-2">Create multiple audio channels. Each has its own shareable code.</p>
-          </div>
-          <Dialog open={roomDialogOpen} onOpenChange={setRoomDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid={TID.adminAddRoomBtn} className="bg-[#3A4F41] hover:bg-[#2f4136] text-[#FCFCFB] h-11 px-5 rounded-md">
-                <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} /> New room
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md rounded-md bg-white border-[#E8E8E3]">
-              <DialogHeader>
-                <DialogTitle className="font-extrabold tracking-tight">Create a room</DialogTitle>
-                <DialogDescription className="text-[#666]">A new audio channel with its own room code.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={submitCreateRoom} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Room name</Label>
-                  <Input required minLength={2} data-testid={TID.newRoomNameInput} value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} className="h-10 rounded-md border-[#E8E8E3]" />
-                </div>
-                <DialogFooter>
-                  <Button type="submit" disabled={creatingRoom} data-testid={TID.newRoomSubmit} className="bg-[#3A4F41] hover:bg-[#2f4136] text-[#FCFCFB] rounded-md h-10">
-                    {creatingRoom ? "Creating…" : "Create room"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-12" data-testid={TID.adminRoomList}>
-          {rooms.map((r) => (
-            <div key={r.id} data-testid={`${TID.adminRoomCardPrefix}${r.id}`} className="border border-[#E8E8E3] bg-white rounded-md p-6 flex flex-col gap-4">
-              <div className="flex items-start justify-between">
-                <div className="w-9 h-9 rounded-md bg-[#F2F2F0] flex items-center justify-center">
-                  <Radio className="w-4 h-4 text-[#3A4F41]" strokeWidth={1.5} />
-                </div>
-                <button
-                  data-testid={`${TID.adminRoomCopyPrefix}${r.id}`}
-                  onClick={() => copyCode(r.room_code, r.id)}
-                  className="inline-flex items-center gap-1.5 text-xs font-mono border border-[#E8E8E3] rounded-sm px-2 py-1 hover:bg-[#FAFAF7]"
-                >
-                  {r.room_code}
-                  {copiedId === r.id ? <Check className="w-3 h-3 text-[#4C7D5B]" /> : <Copy className="w-3 h-3 text-[#666]" />}
-                </button>
+      <div className="max-w-6xl mx-auto px-8 py-10">
+        <div className="border border-[#E8E8E3] bg-white rounded-md p-8 mb-10">
+          <div className="grid lg:grid-cols-2 gap-10 items-center">
+            <div>
+              <div className="text-[11px] tracking-widest uppercase text-[#666] mb-2">Your Room</div>
+              <h1 data-testid={TID.adminRoomName} className="text-4xl font-extrabold tracking-tight">{room.name}</h1>
+              <div className="mt-4 flex items-center gap-4 text-sm text-[#666]">
+                <span className="inline-flex items-center gap-1.5"><Users2 className="w-4 h-4" strokeWidth={1.5} /> {members.length}/15 members</span>
+                <span>·</span>
+                <span>Max {room.max_participants} concurrent</span>
+                <span>·</span>
+                <span>
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle ${room.status === "active" ? "bg-[#4C7D5B]" : "bg-[#C84C4C]"}`} />
+                  {room.status}
+                </span>
               </div>
-              <div>
-                <div className="font-bold text-lg tracking-tight">{r.name}</div>
-                <div className="text-xs text-[#666] mt-1">Max {r.max_participants} live</div>
-              </div>
-              <div className="mt-auto flex gap-2">
-                <Button
-                  data-testid={`${TID.adminRoomEnterPrefix}${r.id}`}
-                  onClick={() => navigate(`/room?id=${r.id}`)}
-                  className="flex-1 bg-[#3A4F41] hover:bg-[#2f4136] text-[#FCFCFB] rounded-md h-9"
-                >
-                  Enter
-                </Button>
-                <Button
-                  data-testid={`${TID.adminRoomDeletePrefix}${r.id}`}
-                  variant="outline"
-                  onClick={() => setRoomToDelete(r)}
-                  className="rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C] h-9"
-                >
-                  <Trash2 className="w-3.5 h-3.5" strokeWidth={2} />
+              <div className="mt-6 flex items-center gap-3">
+                <div className="border border-[#E8E8E3] rounded-md px-4 py-3 bg-[#FAFAF7]">
+                  <div className="text-[10px] tracking-widest uppercase text-[#666] mb-1">Room Code</div>
+                  <div data-testid={TID.adminRoomCode} className="font-mono text-2xl font-bold tracking-widest">{room.room_code}</div>
+                </div>
+                <Button data-testid={TID.adminCopyRoomCode} variant="outline" onClick={copyCode} className="h-11 rounded-md border-[#E8E8E3]">
+                  {copied ? <><Check className="w-4 h-4 mr-1.5 text-[#4C7D5B]" /> Copied</> : <><Copy className="w-4 h-4 mr-1.5" /> Copy</>}
                 </Button>
               </div>
             </div>
-          ))}
+            <div className="border-l border-[#E8E8E3] pl-10">
+              <div className="text-[11px] tracking-widest uppercase text-[#666] mb-3">Enter the audio channel</div>
+              <p className="text-sm text-[#666] mb-6 max-w-sm leading-relaxed">
+                Join your room to talk with your team. You are the host — you can mute or remove any participant.
+              </p>
+              <Button
+                data-testid={TID.adminEnterRoomBtn}
+                onClick={() => navigate(`/room?id=${room.id}`)}
+                disabled={room.status !== "active"}
+                className="bg-[#3A4F41] hover:bg-[#2f4136] text-[#FCFCFB] h-12 px-6 rounded-md disabled:opacity-50"
+              >
+                <Radio className="w-4 h-4 mr-2" strokeWidth={1.75} /> Enter audio room
+              </Button>
+              {room.status !== "active" && (
+                <p className="text-xs text-[#C84C4C] mt-3">This room has been suspended by the platform owner.</p>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Members */}
         <div className="flex items-end justify-between mb-5">
           <div>
             <div className="text-[11px] tracking-widest uppercase text-[#666] mb-1">Members</div>
-            <h2 className="text-2xl font-extrabold tracking-tight">People with access</h2>
-            <p className="text-xs text-[#666] mt-1">{members.length}/15 members. Anyone here can join any of your rooms.</p>
+            <h2 className="text-2xl font-extrabold tracking-tight">People in your room</h2>
+            <p className="text-xs text-[#666] mt-1">{members.length}/15 members. They can only see this room.</p>
           </div>
           <Dialog open={memberDialogOpen} onOpenChange={setMemberDialogOpen}>
             <DialogTrigger asChild>
@@ -191,7 +132,7 @@ export default function AdminDashboard() {
             <DialogContent className="sm:max-w-md rounded-md bg-white border-[#E8E8E3]">
               <DialogHeader>
                 <DialogTitle className="font-extrabold tracking-tight">Add a member</DialogTitle>
-                <DialogDescription className="text-[#666]">They'll be able to sign in and join any of your rooms.</DialogDescription>
+                <DialogDescription className="text-[#666]">They'll be able to sign in and join this room.</DialogDescription>
               </DialogHeader>
               <form onSubmit={submitAddMember} className="space-y-4">
                 <div className="space-y-1.5">
@@ -221,7 +162,7 @@ export default function AdminDashboard() {
             <div className="p-16 text-center">
               <Users2 className="w-8 h-8 mx-auto text-[#3A4F41] mb-3" strokeWidth={1.25} />
               <div className="font-bold text-lg tracking-tight">No members yet</div>
-              <div className="text-sm text-[#666] mt-1">Add up to 15 people who can join your rooms.</div>
+              <div className="text-sm text-[#666] mt-1">Add up to 15 people who can join your audio room.</div>
             </div>
           ) : members.map((m) => (
             <div key={m.id} className="flex items-center justify-between px-6 py-4 border-b border-[#E8E8E3] last:border-b-0 hover:bg-[#FAFAF7]">
@@ -248,34 +189,12 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Confirm dialogs */}
-      <AlertDialog open={!!roomToDelete} onOpenChange={(o) => !o && setRoomToDelete(null)}>
-        <AlertDialogContent className="bg-white border-[#E8E8E3] rounded-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="font-extrabold tracking-tight">Delete room "{roomToDelete?.name}"?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#666]">
-              This channel will be permanently removed. Members cannot join it after this. Cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-md">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              data-testid={TID.adminRoomDeleteConfirm}
-              onClick={doDeleteRoom}
-              className="rounded-md bg-[#C84C4C] hover:bg-[#a63c3c] text-white"
-            >
-              Delete room
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <AlertDialog open={!!memberToRemove} onOpenChange={(o) => !o && setMemberToRemove(null)}>
         <AlertDialogContent className="bg-white border-[#E8E8E3] rounded-md">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-extrabold tracking-tight">Remove {memberToRemove?.name}?</AlertDialogTitle>
             <AlertDialogDescription className="text-[#666]">
-              They will lose access to all your rooms. Cannot be undone.
+              They will lose access to your room. Cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
