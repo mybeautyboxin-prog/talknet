@@ -68,4 +68,5 @@ export const TID = {
   participantMutePrefix: "participant-mute-btn-",
   participantKickPrefix: "participant-kick-btn-",
   participantKickConfirm: "participant-kick-confirm-button",
+  roomContinuousToggle: "room-continuous-mic-toggle",
 };

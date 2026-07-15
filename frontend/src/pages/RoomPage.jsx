@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Room, RoomEvent, Track, ConnectionState } from "livekit-client";
-import { Mic, MicOff, PhoneOff, Radio, Volume2, VolumeX, UserX, Loader2 } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Radio, Volume2, VolumeX, UserX, Loader2, Zap } from "lucide-react";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TID } from "@/lib/testIds";
 import { toast } from "sonner";
@@ -19,12 +20,14 @@ export default function RoomPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [participants, setParticipants] = useState([]);
   const [isTalking, setIsTalking] = useState(false);
+  const [continuousMic, setContinuousMic] = useState(false);
   const [roomMeta, setRoomMeta] = useState(null);
   const [participantToKick, setParticipantToKick] = useState(null);
 
   const roomRef = useRef(null);
   const micTrackRef = useRef(null);
   const talkingRef = useRef(false);
+  const continuousRef = useRef(false);
   const sessionIdRef = useRef(null);
 
   const isHost = user?.role === "room_admin";
@@ -127,10 +130,13 @@ export default function RoomPage() {
     }
     try { await roomRef.current?.disconnect(); } catch (_) {}
     roomRef.current = null; micTrackRef.current = null;
+    talkingRef.current = false; continuousRef.current = false;
+    setIsTalking(false); setContinuousMic(false);
     setState("idle"); setParticipants([]);
   }, []);
 
   const startTalking = useCallback(async () => {
+    if (continuousRef.current) return; // already open mic
     if (talkingRef.current) return;
     const t = micTrackRef.current; if (!t) return;
     talkingRef.current = true; setIsTalking(true);
@@ -138,11 +144,30 @@ export default function RoomPage() {
   }, []);
 
   const stopTalking = useCallback(async () => {
+    if (continuousRef.current) return; // keep open
     if (!talkingRef.current) return;
     talkingRef.current = false; setIsTalking(false);
     const t = micTrackRef.current; if (!t) return;
     try { await t.mute(); } catch (_) {}
   }, []);
+
+  const toggleContinuous = useCallback(async (next) => {
+    if (!isHost) return;
+    continuousRef.current = next;
+    setContinuousMic(next);
+    const t = micTrackRef.current;
+    if (!t) return;
+    try {
+      if (next) {
+        await t.unmute();
+        // Reset PTT state — user isn't holding anything anymore
+        talkingRef.current = false;
+        setIsTalking(false);
+      } else {
+        await t.mute();
+      }
+    } catch (_) {}
+  }, [isHost]);
 
   useEffect(() => {
     if (state !== "connected") return;
@@ -288,9 +313,21 @@ export default function RoomPage() {
 
       <div className="sticky bottom-0 left-0 right-0 px-8 pb-8 pointer-events-none">
         <div className="max-w-3xl mx-auto pointer-events-auto">
+          {isHost && (
+            <div className="mb-3 flex items-center justify-end gap-3 text-[11px] tracking-widest uppercase text-[#666]">
+              <Zap className={`w-3.5 h-3.5 ${continuousMic ? "text-[#4C7D5B]" : "text-[#666]"}`} strokeWidth={2} />
+              <span>Open mic</span>
+              <Switch
+                data-testid={TID.roomContinuousToggle}
+                checked={continuousMic}
+                onCheckedChange={toggleContinuous}
+                className="data-[state=checked]:bg-[#4C7D5B]"
+              />
+            </div>
+          )}
           <div className="bg-[#111] text-[#FCFCFB] rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.18)] px-2 py-2 flex items-center justify-between gap-3">
             <div className="pl-4 pr-2 text-[11px] tracking-widest uppercase opacity-70 hidden sm:block">
-              Hold <kbd className="font-mono bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-[10px] ml-1">Space</kbd>
+              {continuousMic ? "Mic open" : (<>Hold <kbd className="font-mono bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-[10px] ml-1">Space</kbd></>)}
             </div>
             <button
               data-testid={TID.roomPttButton}
@@ -299,10 +336,21 @@ export default function RoomPage() {
               onMouseLeave={stopTalking}
               onTouchStart={(e) => { e.preventDefault(); startTalking(); }}
               onTouchEnd={(e) => { e.preventDefault(); stopTalking(); }}
-              className={`flex-1 rounded-full py-4 font-extrabold tracking-widest uppercase text-sm select-none transition-colors ${isTalking ? "bg-[#4C7D5B] text-white" : "bg-white/10 text-white hover:bg-white/15"}`}
+              disabled={continuousMic}
+              className={`flex-1 rounded-full py-4 font-extrabold tracking-widest uppercase text-sm select-none transition-colors ${
+                continuousMic
+                  ? "bg-[#4C7D5B] text-white cursor-default"
+                  : isTalking
+                    ? "bg-[#4C7D5B] text-white"
+                    : "bg-white/10 text-white hover:bg-white/15"
+              }`}
               style={{ WebkitUserSelect: "none", touchAction: "none" }}
             >
-              {isTalking ? (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Talking…</>) : (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Hold to talk</>)}
+              {continuousMic
+                ? (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Broadcasting…</>)
+                : isTalking
+                  ? (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Talking…</>)
+                  : (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Hold to talk</>)}
             </button>
             <div className="pl-2 pr-4 text-[11px] tracking-widest uppercase opacity-70 hidden sm:block">{remoteCount} listening</div>
           </div>
