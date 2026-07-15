@@ -29,6 +29,7 @@ export default function RoomPage() {
   const talkingRef = useRef(false);
   const continuousRef = useRef(false);
   const sessionIdRef = useRef(null);
+  const audioContainerRef = useRef(null);
 
   const isHost = user?.role === "room_admin";
 
@@ -88,6 +89,21 @@ export default function RoomPage() {
       const room = new Room({ adaptiveStream: true, dynacast: true });
       roomRef.current = room;
 
+      const attachAudio = (track, participant) => {
+        if (track.kind !== "audio") return;
+        try {
+          const el = track.attach();
+          el.setAttribute("data-lk-participant", participant?.identity || "");
+          el.autoplay = true;
+          el.setAttribute("playsinline", "");
+          audioContainerRef.current?.appendChild(el);
+        } catch (_) {}
+      };
+      const detachAudio = (track) => {
+        if (track.kind !== "audio") return;
+        try { track.detach().forEach((el) => el.remove()); } catch (_) {}
+      };
+
       room
         .on(RoomEvent.ParticipantConnected, refreshParticipants)
         .on(RoomEvent.ParticipantDisconnected, refreshParticipants)
@@ -95,7 +111,20 @@ export default function RoomPage() {
         .on(RoomEvent.TrackUnmuted, refreshParticipants)
         .on(RoomEvent.TrackPublished, refreshParticipants)
         .on(RoomEvent.TrackUnpublished, refreshParticipants)
+        .on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+          attachAudio(track, participant);
+          refreshParticipants();
+        })
+        .on(RoomEvent.TrackUnsubscribed, (track) => {
+          detachAudio(track);
+          refreshParticipants();
+        })
         .on(RoomEvent.ActiveSpeakersChanged, refreshParticipants)
+        .on(RoomEvent.AudioPlaybackStatusChanged, () => {
+          if (!room.canPlaybackAudio) {
+            toast.warning("Browser blocked audio autoplay — click anywhere to enable.");
+          }
+        })
         .on(RoomEvent.Disconnected, () => {
           setState("idle"); setParticipants([]);
         })
@@ -104,6 +133,19 @@ export default function RoomPage() {
         });
 
       await room.connect(livekit_url, token);
+
+      // Unlock autoplay after the user's Join click (a real gesture)
+      try { await room.startAudio(); } catch (_) {}
+
+      // Attach any tracks that were already subscribed at connect time
+      room.remoteParticipants.forEach((p) => {
+        p.trackPublications.forEach((pub) => {
+          if (pub.track && pub.kind === Track.Kind.Audio) {
+            attachAudio(pub.track, p);
+          }
+        });
+      });
+
       await room.localParticipant.setMicrophoneEnabled(true);
       const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
       if (pub?.track) {
@@ -128,6 +170,11 @@ export default function RoomPage() {
       try { await api.post("/room/session/end", { session_id: sessionIdRef.current }); } catch (_) {}
       sessionIdRef.current = null;
     }
+    // Detach and remove any remote audio elements
+    try {
+      const c = audioContainerRef.current;
+      if (c) while (c.firstChild) c.removeChild(c.firstChild);
+    } catch (_) {}
     try { await roomRef.current?.disconnect(); } catch (_) {}
     roomRef.current = null; micTrackRef.current = null;
     talkingRef.current = false; continuousRef.current = false;
@@ -269,6 +316,9 @@ export default function RoomPage() {
           </Button>
         </div>
       </header>
+
+      {/* Hidden container that holds remote audio <audio> elements attached by LiveKit */}
+      <div ref={audioContainerRef} data-lk-audio-sink aria-hidden="true" style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} />
 
       <div className="flex-1 max-w-6xl mx-auto w-full px-8 py-10">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4" data-testid={TID.roomParticipantList}>
