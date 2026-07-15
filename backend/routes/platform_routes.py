@@ -54,19 +54,7 @@ async def provision_room(payload: RoomProvision, _u: dict = Depends(owner_only))
     else:
         raise HTTPException(status_code=500, detail="Could not generate unique room code")
 
-    # Insert admin (with room_id pointing to the new room)
-    await db.users.insert_one({
-        "id": admin_user_id,
-        "email": email,
-        "password_hash": hash_password(payload.admin_password),
-        "name": payload.admin_name,
-        "role": "room_admin",
-        "room_id": room_id,
-        "status": "active",
-        "created_at": now_iso(),
-    })
-
-    # Insert room
+    # Insert room FIRST (so a room-insert failure doesn't orphan the admin user)
     room_doc = {
         "id": room_id,
         "name": payload.room_name,
@@ -78,6 +66,22 @@ async def provision_room(payload: RoomProvision, _u: dict = Depends(owner_only))
         "created_at": now_iso(),
     }
     await db.rooms.insert_one(room_doc)
+
+    # Then the admin — if this fails, roll back the room
+    try:
+        await db.users.insert_one({
+            "id": admin_user_id,
+            "email": email,
+            "password_hash": hash_password(payload.admin_password),
+            "name": payload.admin_name,
+            "role": "room_admin",
+            "room_id": room_id,
+            "status": "active",
+            "created_at": now_iso(),
+        })
+    except Exception:
+        await db.rooms.delete_one({"id": room_id})
+        raise
 
     return await _assemble_room(db, room_doc)
 

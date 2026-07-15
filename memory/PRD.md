@@ -37,7 +37,14 @@ Build a production-ready browser-based audio conferencing platform using React +
 - Multi-tenant isolation: every API check derives room from `user.customer_id`
 - Design: Swiss-brutalist minimal (Manrope/IBM Plex Sans, sage green #3A4F41)
 
-## Phase 2 (DONE — 2026-02-09)
+## Phase 3 refactor (DONE — 2026-02-09) — 3-role model
+- **Removed the Customer tenant layer entirely.** Model is now Platform Owner → Room Admin → Users. `customers` collection dropped on startup migration.
+- `rooms` now carries `admin_user_id` (unique) + `status`; `users` now carries `room_id`.
+- **Room Admin restrictions**: cannot create rooms, cannot see/modify any room but their assigned one. `/api/admin/rooms` removed; `/api/admin/room` returns the single assigned room.
+- Platform Owner endpoint moved: `POST /api/platform/rooms` provisions a room + its admin in one atomic call (room inserted first, admin second, admin rollback on failure).
+- Frontend: Owner console renamed to "Rooms" with new provision dialog. Admin dashboard shows exactly one room card (no list, no create). User picker (`/rooms`) auto-forwards to their one assigned room.
+- Startup migration is idempotent: preserves existing data by finding one canonical room per legacy customer's admin, backfilling `room_id` on users, unset `customer_id`, backfilling missing `status`.
+- 17/17 backend tests pass in `/app/backend/tests/test_talknet_v3.py`; frontend flows verified.
 - **Suspended-user runtime enforcement** — `get_current_user` returns 403 on every request if `user.status == "suspended"` (instant lockout after platform owner suspends).
 - **Password reset** — `/auth/forgot-password` (privacy-preserving 200) + `/auth/reset-password` with TTL-indexed token. Reset link printed to backend log until Resend key is added.
 - **Multi-room per customer** — admin can create up to 20 rooms with `/api/admin/rooms` CRUD; last-room protection; each with its own room_code. Users pick a room from `/rooms` before joining.
