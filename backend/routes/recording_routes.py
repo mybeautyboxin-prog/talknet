@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from db import get_db
 from models import now_iso, new_id
-from auth import require_roles
+from auth import require_roles, get_current_user
 
 router = APIRouter(prefix="/admin/recordings", tags=["recordings"])
 admin_only = require_roles("room_admin")
@@ -15,6 +15,20 @@ RECORDINGS_DIR = Path(os.environ.get("RECORDINGS_DIR", "/app/backend/recordings"
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB per recording — enough for ~3 hours of Opus
+
+
+async def _resolve_room_for_upload(db, user: dict) -> dict:
+    """Any participant (admin or user) can upload for their own room."""
+    if user["role"] == "room_admin":
+        room = await db.rooms.find_one({"admin_user_id": user["id"]})
+    elif user["role"] == "user":
+        rid = user.get("room_id")
+        room = await db.rooms.find_one({"id": rid}) if rid else None
+    else:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    if not room:
+        raise HTTPException(status_code=404, detail="No assigned room")
+    return room
 
 
 async def _my_room(db, user: dict) -> dict:
@@ -30,10 +44,10 @@ async def upload_recording(
     duration_sec: int = Form(0),
     started_at: str = Form(""),
     ext: str = Form("webm"),
-    user: dict = Depends(admin_only),
+    user: dict = Depends(get_current_user),
 ):
     db = get_db()
-    room = await _my_room(db, user)
+    room = await _resolve_room_for_upload(db, user)
 
     safe_ext = ext.lower().strip().replace(".", "")
     if safe_ext not in ("webm", "ogg", "mp3", "mp4", "m4a", "wav"):
