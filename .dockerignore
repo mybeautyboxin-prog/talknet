@@ -1,0 +1,23 @@
+# --- Build artefacts ---
+node_modules
+build
+dist
+__pycache__
+*.pyc
+.DS_Store
+
+# --- Environment ---
+.env
+.env.local
+.env.*.local
+
+# --- Secrets / certs ---
+certs/
+*.pem
+*.key
+
+# --- Recordings volume (mounted, not baked in) ---
+backend/recordings/
+
+# --- Test reports (generated) ---
+test_reports/
