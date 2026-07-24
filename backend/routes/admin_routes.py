@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from db import get_db
-from models import RoomMemberCreate, UserPublic, RoomPublic, now_iso, new_id
+from models import RoomMemberCreate, UserPublic, RoomPublic, PLANS, DEFAULT_PLAN, now_iso, new_id
 from auth import require_roles, hash_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -15,10 +15,15 @@ async def _get_my_room(db, user: dict) -> dict:
     return room
 
 
+def _plan(code: str) -> dict:
+    return PLANS.get(code) or PLANS[DEFAULT_PLAN]
+
+
 @router.get("/room")
 async def get_my_room(user: dict = Depends(admin_only)):
     db = get_db()
     room = await _get_my_room(db, user)
+    plan = _plan(room.get("plan_code", DEFAULT_PLAN))
     return RoomPublic(
         id=room["id"],
         name=room["name"],
@@ -28,6 +33,10 @@ async def get_my_room(user: dict = Depends(admin_only)):
         status=room.get("status", "active"),
         admin_user_id=room.get("admin_user_id"),
         member_count=await db.users.count_documents({"room_id": room["id"], "role": "user"}),
+        plan_code=room.get("plan_code", DEFAULT_PLAN),
+        plan_name=plan["name"],
+        listener_only=plan["listener_only"],
+        max_users=plan["max_users"],
         created_at=room["created_at"],
     ).model_dump()
 
@@ -50,9 +59,13 @@ async def add_member(payload: RoomMemberCreate, user: dict = Depends(admin_only)
     email = payload.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=409, detail="Email already in use")
+    plan = _plan(room.get("plan_code", DEFAULT_PLAN))
     count = await db.users.count_documents({"room_id": room["id"], "role": "user"})
-    if count >= 15:
-        raise HTTPException(status_code=400, detail="Room limit reached (15 members)")
+    if count >= plan["max_users"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plan limit reached ({plan['max_users']} members on {plan['name']}). Ask the platform owner to upgrade.",
+        )
     new_user = {
         "id": new_id(),
         "email": email,

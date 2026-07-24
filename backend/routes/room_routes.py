@@ -9,6 +9,8 @@ from models import (
     SessionStart,
     SessionEnd,
     RoomPublic,
+    PLANS,
+    DEFAULT_PLAN,
     now_iso,
     new_id,
 )
@@ -91,7 +93,10 @@ async def get_livekit_token(payload: RoomTokenRequest, user: dict = Depends(get_
     if not (url and key and secret):
         raise HTTPException(status_code=500, detail="LiveKit not configured")
 
+    plan = PLANS.get(room.get("plan_code", DEFAULT_PLAN)) or PLANS[DEFAULT_PLAN]
     is_host = user["role"] == "room_admin"
+    listener_only = bool(plan.get("listener_only") and user["role"] == "user")
+
     grants = lk_api.VideoGrants(
         room_join=True,
         room=room["livekit_room_name"],
@@ -105,7 +110,7 @@ async def get_livekit_token(payload: RoomTokenRequest, user: dict = Depends(get_
         .with_identity(user["id"])
         .with_name(user["name"])
         .with_grants(grants)
-        .with_metadata(f'{{"role":"{user["role"]}","name":"{user["name"]}"}}')
+        .with_metadata(f'{{"role":"{user["role"]}","name":"{user["name"]}","listenerOnly":{str(listener_only).lower()}}}')
     )
     return TokenResponse(
         token=token.to_jwt(),
@@ -113,6 +118,7 @@ async def get_livekit_token(payload: RoomTokenRequest, user: dict = Depends(get_
         room_name=room["livekit_room_name"],
         identity=user["id"],
         is_host=is_host,
+        listener_only=listener_only,
     )
 
 

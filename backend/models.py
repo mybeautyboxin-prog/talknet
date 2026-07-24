@@ -14,6 +14,39 @@ def new_id() -> str:
 
 Role = Literal["platform_owner", "room_admin", "user"]
 Status = Literal["active", "suspended"]
+PlanCode = Literal["A", "B", "C"]
+
+
+PLANS: dict[str, dict] = {
+    "A": {
+        "code": "A",
+        "name": "Plan A · Starter",
+        "max_users": 5,
+        "listener_only": False,
+        "price_monthly": 9,
+        "currency": "USD",
+        "description": "5 push-to-talk users in one room.",
+    },
+    "B": {
+        "code": "B",
+        "name": "Plan B · Team",
+        "max_users": 10,
+        "listener_only": False,
+        "price_monthly": 19,
+        "currency": "USD",
+        "description": "10 push-to-talk users in one room.",
+    },
+    "C": {
+        "code": "C",
+        "name": "Plan C · Broadcast",
+        "max_users": 25,
+        "listener_only": True,
+        "price_monthly": 29,
+        "currency": "USD",
+        "description": "25 listener-only users in one room. Admin can grant mic on demand.",
+    },
+}
+DEFAULT_PLAN = "A"
 
 
 # -------- User --------
@@ -44,15 +77,19 @@ class ResetPasswordRequest(BaseModel):
 
 # -------- Room --------
 class RoomProvision(BaseModel):
-    """Platform Owner provisions a room by supplying room details + its admin."""
     room_name: str = Field(min_length=2, max_length=80)
     admin_name: str = Field(min_length=2, max_length=80)
     admin_email: EmailStr
     admin_password: str = Field(min_length=6, max_length=128)
+    plan_code: PlanCode = DEFAULT_PLAN
 
 
 class RoomStatusUpdate(BaseModel):
     status: Status
+
+
+class RoomPlanUpdate(BaseModel):
+    plan_code: PlanCode
 
 
 class RoomPublic(BaseModel):
@@ -65,10 +102,14 @@ class RoomPublic(BaseModel):
     admin_user_id: Optional[str] = None
     admin: Optional[UserPublic] = None
     member_count: int = 0
+    plan_code: PlanCode = DEFAULT_PLAN
+    plan_name: Optional[str] = None
+    listener_only: bool = False
+    max_users: int = 5
     created_at: str
 
 
-# -------- Members (Users under a Room Admin) --------
+# -------- Members --------
 class RoomMemberCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     email: EmailStr
@@ -86,6 +127,7 @@ class TokenResponse(BaseModel):
     room_name: str
     identity: str
     is_host: bool
+    listener_only: bool = False
 
 
 class ModeratorAction(BaseModel):
@@ -94,7 +136,7 @@ class ModeratorAction(BaseModel):
     track_sid: Optional[str] = None
 
 
-# -------- Sessions / Analytics --------
+# -------- Sessions --------
 class SessionStart(BaseModel):
     room_id: str
 

@@ -4,8 +4,11 @@ from db import get_db
 from models import (
     RoomProvision,
     RoomStatusUpdate,
+    RoomPlanUpdate,
     RoomPublic,
     UserPublic,
+    PLANS,
+    DEFAULT_PLAN,
     now_iso,
     new_id,
 )
@@ -15,6 +18,10 @@ router = APIRouter(prefix="/platform", tags=["platform"])
 owner_only = require_roles("platform_owner")
 
 
+def _plan_info(code: str) -> dict:
+    return PLANS.get(code) or PLANS[DEFAULT_PLAN]
+
+
 async def _assemble_room(db, room: dict) -> dict:
     admin = None
     if room.get("admin_user_id"):
@@ -22,6 +29,8 @@ async def _assemble_room(db, room: dict) -> dict:
         if adoc:
             admin = UserPublic(**adoc).model_dump()
     member_count = await db.users.count_documents({"room_id": room["id"], "role": "user"})
+    plan_code = room.get("plan_code", DEFAULT_PLAN)
+    plan = _plan_info(plan_code)
     return RoomPublic(
         id=room["id"],
         name=room["name"],
@@ -32,13 +41,21 @@ async def _assemble_room(db, room: dict) -> dict:
         admin_user_id=room.get("admin_user_id"),
         admin=admin,
         member_count=member_count,
+        plan_code=plan_code,
+        plan_name=plan["name"],
+        listener_only=plan["listener_only"],
+        max_users=plan["max_users"],
         created_at=room["created_at"],
     ).model_dump()
 
 
+@router.get("/plans")
+async def list_plans(_u: dict = Depends(owner_only)):
+    return {"plans": list(PLANS.values())}
+
+
 @router.post("/rooms", status_code=201)
 async def provision_room(payload: RoomProvision, _u: dict = Depends(owner_only)):
-    """Provision a new room + its Room Admin in one call."""
     db = get_db()
     email = payload.admin_email.lower().strip()
     if await db.users.find_one({"email": email}):
@@ -54,20 +71,20 @@ async def provision_room(payload: RoomProvision, _u: dict = Depends(owner_only))
     else:
         raise HTTPException(status_code=500, detail="Could not generate unique room code")
 
-    # Insert room FIRST (so a room-insert failure doesn't orphan the admin user)
+    plan = _plan_info(payload.plan_code)
     room_doc = {
         "id": room_id,
         "name": payload.room_name,
         "room_code": code,
         "livekit_room_name": f"room_{room_id.replace('-', '')[:16]}",
-        "max_participants": 15,
+        "max_participants": plan["max_users"],
         "status": "active",
         "admin_user_id": admin_user_id,
+        "plan_code": payload.plan_code,
         "created_at": now_iso(),
     }
     await db.rooms.insert_one(room_doc)
 
-    # Then the admin — if this fails, roll back the room
     try:
         await db.users.insert_one({
             "id": admin_user_id,
@@ -82,7 +99,6 @@ async def provision_room(payload: RoomProvision, _u: dict = Depends(owner_only))
     except Exception:
         await db.rooms.delete_one({"id": room_id})
         raise
-
     return await _assemble_room(db, room_doc)
 
 
@@ -109,8 +125,29 @@ async def update_room_status(room_id: str, payload: RoomStatusUpdate, _u: dict =
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     await db.rooms.update_one({"id": room_id}, {"$set": {"status": payload.status}})
-    # Cascade to admin + members
     await db.users.update_many({"room_id": room_id}, {"$set": {"status": payload.status}})
+    doc = await db.rooms.find_one({"id": room_id}, {"_id": 0})
+    return await _assemble_room(db, doc)
+
+
+@router.patch("/rooms/{room_id}/plan")
+async def update_room_plan(room_id: str, payload: RoomPlanUpdate, _u: dict = Depends(owner_only)):
+    db = get_db()
+    room = await db.rooms.find_one({"id": room_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    plan = _plan_info(payload.plan_code)
+    # Reject downgrade if current member count exceeds new plan's cap
+    current_members = await db.users.count_documents({"room_id": room_id, "role": "user"})
+    if current_members > plan["max_users"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot switch to {plan['name']}: room has {current_members} members but plan allows {plan['max_users']}.",
+        )
+    await db.rooms.update_one(
+        {"id": room_id},
+        {"$set": {"plan_code": payload.plan_code, "max_participants": plan["max_users"]}},
+    )
     doc = await db.rooms.find_one({"id": room_id}, {"_id": 0})
     return await _assemble_room(db, doc)
 
@@ -121,9 +158,9 @@ async def delete_room(room_id: str, _u: dict = Depends(owner_only)):
     room = await db.rooms.find_one({"id": room_id})
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    # Delete everyone (admin + users) belonging to this room
     await db.users.delete_many({"room_id": room_id})
     await db.sessions.delete_many({"room_id": room_id})
+    await db.recordings.delete_many({"room_id": room_id})
     await db.rooms.delete_one({"id": room_id})
     return None
 
@@ -135,11 +172,19 @@ async def platform_stats(_u: dict = Depends(owner_only)):
     active_rooms = await db.rooms.count_documents({"status": "active"})
     total_admins = await db.users.count_documents({"role": "room_admin"})
     total_users = await db.users.count_documents({"role": "user"})
+
+    # Simple MRR calc from active rooms' plans
+    mrr = 0
+    async for r in db.rooms.find({"status": "active"}, {"plan_code": 1, "_id": 0}):
+        p = _plan_info(r.get("plan_code", DEFAULT_PLAN))
+        mrr += p["price_monthly"]
     return {
         "total_rooms": total_rooms,
         "active_rooms": active_rooms,
         "total_admins": total_admins,
         "total_users": total_users,
+        "mrr": mrr,
+        "currency": "USD",
     }
 
 

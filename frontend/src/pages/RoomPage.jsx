@@ -26,6 +26,7 @@ export default function RoomPage() {
   const [participants, setParticipants] = useState([]);
   const [isTalking, setIsTalking] = useState(false);
   const [continuousMic, setContinuousMic] = useState(false);
+  const [listenerOnly, setListenerOnly] = useState(false);
   const [roomMeta, setRoomMeta] = useState(null);
   const [participantToKick, setParticipantToKick] = useState(null);
 
@@ -164,10 +165,12 @@ export default function RoomPage() {
   const startTalking = useCallback(async () => {
     if (continuousRef.current) return;
     if (talkingRef.current) return;
+    // Listener-only users cannot talk (Plan C), unless the host has granted them a mic
+    if (listenerOnly && !continuousRef.current) return;
     const t = micTrackRef.current; if (!t) return;
     talkingRef.current = true; setIsTalking(true);
     try { await t.unmute(); } catch (_) {}
-  }, []);
+  }, [listenerOnly]);
 
   const stopTalking = useCallback(async () => {
     if (continuousRef.current) return;
@@ -234,7 +237,8 @@ export default function RoomPage() {
     setState("connecting"); setErrorMsg("");
     try {
       const tokenRes = await api.post("/room/token", { room_id: roomId });
-      const { token, livekit_url } = tokenRes.data;
+      const { token, livekit_url, listener_only } = tokenRes.data;
+      setListenerOnly(!!listener_only);
       if (!livekit_url || livekit_url.includes("placeholder")) {
         throw new Error("LiveKit isn't configured yet.");
       }
@@ -662,7 +666,7 @@ export default function RoomPage() {
           )}
           <div className="bg-[#111] text-[#FCFCFB] rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.18)] px-2 py-2 flex items-center justify-between gap-3">
             <div className="pl-4 pr-2 text-[11px] tracking-widest uppercase opacity-70 hidden sm:block">
-              {continuousMic ? "Mic open" : (<>Hold <kbd className="font-mono bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-[10px] ml-1">Space</kbd></>)}
+              {listenerOnly && !continuousMic ? "Listener mode" : (continuousMic ? "Mic open" : (<>Hold <kbd className="font-mono bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-[10px] ml-1">Space</kbd></>))}
             </div>
             <button
               data-testid={TID.roomPttButton}
@@ -671,14 +675,16 @@ export default function RoomPage() {
               onMouseLeave={stopTalking}
               onTouchStart={(e) => { e.preventDefault(); startTalking(); }}
               onTouchEnd={(e) => { e.preventDefault(); stopTalking(); }}
-              disabled={continuousMic}
+              disabled={continuousMic || (listenerOnly && !continuousMic)}
               className={`flex-1 rounded-full py-4 font-extrabold tracking-widest uppercase text-sm select-none transition-colors ${
-                continuousMic ? "bg-[#4C7D5B] text-white cursor-default"
+                listenerOnly && !continuousMic ? "bg-white/5 text-white/50 cursor-not-allowed"
+                : continuousMic ? "bg-[#4C7D5B] text-white cursor-default"
                 : isTalking ? "bg-[#4C7D5B] text-white" : "bg-white/10 text-white hover:bg-white/15"
               }`}
               style={{ WebkitUserSelect: "none", touchAction: "none" }}
             >
-              {continuousMic ? (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Broadcasting…</>)
+              {listenerOnly && !continuousMic ? (<><MicOff className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Listening only</>)
+                : continuousMic ? (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Broadcasting…</>)
                 : isTalking ? (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Talking…</>)
                 : (<><Mic className="w-4 h-4 inline mr-2" strokeWidth={2.25} /> Hold to talk</>)}
             </button>

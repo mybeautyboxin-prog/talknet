@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Radio, Trash2, Pause, Play, Copy, Check, TrendingUp } from "lucide-react";
+import { Plus, Radio, Trash2, Pause, Play, Copy, Check, TrendingUp, Package, Zap } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api, formatApiError } from "@/lib/api";
 import { TID } from "@/lib/testIds";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
@@ -20,28 +21,32 @@ const Stat = ({ label, value, testId }) => (
 
 export default function OwnerDashboard() {
   const [rooms, setRooms] = useState([]);
-  const [stats, setStats] = useState({ total_rooms: 0, active_rooms: 0, total_admins: 0, total_users: 0 });
+  const [plans, setPlans] = useState([]);
+  const [stats, setStats] = useState({ total_rooms: 0, active_rooms: 0, total_admins: 0, total_users: 0, mrr: 0, currency: "USD" });
   const [analytics, setAnalytics] = useState({ daily: [], top_rooms: [], total_sessions: 0, total_minutes: 0 });
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [roomToDelete, setRoomToDelete] = useState(null);
+  const [planChanging, setPlanChanging] = useState(null); // { room, newPlan }
 
-  const [form, setForm] = useState({ room_name: "", admin_name: "", admin_email: "", admin_password: "" });
+  const [form, setForm] = useState({ room_name: "", admin_name: "", admin_email: "", admin_password: "", plan_code: "A" });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [r, s, a] = await Promise.all([
+      const [r, s, a, p] = await Promise.all([
         api.get("/platform/rooms"),
         api.get("/platform/stats"),
         api.get("/platform/analytics?days=14"),
+        api.get("/platform/plans"),
       ]);
       setRooms(r.data.rooms);
       setStats(s.data);
       setAnalytics(a.data);
+      setPlans(p.data.plans);
     } catch (e) { toast.error(formatApiError(e)); }
     finally { setLoading(false); }
   };
@@ -55,11 +60,19 @@ export default function OwnerDashboard() {
       await api.post("/platform/rooms", form);
       toast.success(`Room "${form.room_name}" provisioned`);
       setDialogOpen(false);
-      setForm({ room_name: "", admin_name: "", admin_email: "", admin_password: "" });
+      setForm({ room_name: "", admin_name: "", admin_email: "", admin_password: "", plan_code: "A" });
       loadAll();
     } catch (err) {
       const msg = formatApiError(err); setError(msg); toast.error(msg);
     } finally { setCreating(false); }
+  };
+
+  const changePlan = async (room, newPlan) => {
+    try {
+      await api.patch(`/platform/rooms/${room.id}/plan`, { plan_code: newPlan });
+      toast.success(`Plan updated to ${newPlan}`);
+      loadAll();
+    } catch (e) { toast.error(formatApiError(e)); }
   };
 
   const toggleStatus = async (r) => {
@@ -115,6 +128,21 @@ export default function OwnerDashboard() {
                   <Label>Room name</Label>
                   <Input required data-testid={TID.roomNameInput} value={form.room_name} onChange={(e) => setForm({ ...form, room_name: e.target.value })} className="h-10 rounded-md border-[#E8E8E3]" />
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Subscription plan</Label>
+                  <Select value={form.plan_code} onValueChange={(v) => setForm({ ...form, plan_code: v })}>
+                    <SelectTrigger data-testid={TID.planSelect} className="h-10 rounded-md border-[#E8E8E3]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      {plans.map((p) => (
+                        <SelectItem key={p.code} value={p.code}>
+                          {p.name} — ${p.price_monthly}/mo · {p.max_users} {p.listener_only ? "listeners" : "PTT users"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="border-t border-[#E8E8E3] pt-4 space-y-4">
                   <div className="text-[11px] tracking-widest uppercase text-[#666]">Room admin</div>
                   <div className="space-y-1.5">
@@ -141,11 +169,57 @@ export default function OwnerDashboard() {
           </Dialog>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
           <Stat label="Total rooms" value={stats.total_rooms} testId={TID.ownerStatTotal} />
           <Stat label="Active" value={stats.active_rooms} testId={TID.ownerStatActive} />
           <Stat label="Room admins" value={stats.total_admins} testId={TID.ownerStatAdmins} />
           <Stat label="End users" value={stats.total_users} testId={TID.ownerStatUsers} />
+          <Stat label="MRR" value={`$${stats.mrr}`} testId={TID.ownerStatMRR} />
+        </div>
+
+        {/* Subscription Plans catalog */}
+        <div className="mb-10" data-testid={TID.ownerPlansSection}>
+          <div className="flex items-end justify-between mb-4">
+            <div>
+              <div className="text-[11px] tracking-widest uppercase text-[#666] mb-1">Subscription plans</div>
+              <h2 className="text-2xl font-extrabold tracking-tight flex items-center gap-2">
+                <Package className="w-4 h-4 text-[#3A4F41]" strokeWidth={1.75} /> Monthly plans
+              </h2>
+            </div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            {plans.map((p) => {
+              const active = rooms.filter((r) => r.plan_code === p.code).length;
+              return (
+                <div key={p.code} data-testid={`${TID.planCardPrefix}${p.code}`} className="border border-[#E8E8E3] bg-white rounded-md p-6 flex flex-col">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="text-[11px] tracking-widest uppercase text-[#666]">{p.code}</div>
+                      <div className="font-extrabold text-xl tracking-tight mt-1">{p.name.split("·")[1]?.trim() || p.name}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-extrabold text-3xl tracking-tight">${p.price_monthly}</div>
+                      <div className="text-[10px] tracking-widest uppercase text-[#666]">/mo · {p.currency}</div>
+                    </div>
+                  </div>
+                  <div className="text-sm text-[#666] leading-relaxed mb-4">{p.description}</div>
+                  <ul className="text-sm space-y-1.5 mb-4">
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-[#4C7D5B]" strokeWidth={2.5} /> {p.max_users} {p.listener_only ? "listener-only users" : "PTT users"}</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-[#4C7D5B]" strokeWidth={2.5} /> 1 dedicated room</li>
+                    <li className="flex items-center gap-2">
+                      {p.listener_only
+                        ? (<><Zap className="w-3.5 h-3.5 text-[#3A4F41]" strokeWidth={2} /> Admin can grant mic per user</>)
+                        : (<><Check className="w-3.5 h-3.5 text-[#4C7D5B]" strokeWidth={2.5} /> Everyone can push-to-talk</>)}
+                    </li>
+                  </ul>
+                  <div className="mt-auto pt-4 border-t border-[#E8E8E3] flex items-center justify-between text-xs text-[#666]">
+                    <span className="tracking-widest uppercase">Active rooms</span>
+                    <span className="font-mono font-bold text-[#111]">{active}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="border border-[#E8E8E3] bg-white rounded-md p-6 mb-10" data-testid={TID.ownerAnalyticsSection}>
@@ -203,8 +277,8 @@ export default function OwnerDashboard() {
           <div className="grid grid-cols-12 px-6 py-3 text-[11px] tracking-widest uppercase text-[#666] border-b border-[#E8E8E3] bg-[#FAFAF7]">
             <div className="col-span-3">Room</div>
             <div className="col-span-3">Room admin</div>
+            <div className="col-span-2">Plan · Users</div>
             <div className="col-span-2">Code</div>
-            <div className="col-span-2">Users</div>
             <div className="col-span-2 text-right">Actions</div>
           </div>
           {loading ? (
@@ -229,12 +303,28 @@ export default function OwnerDashboard() {
                 <div className="text-xs text-[#666] font-mono">{r.admin?.email}</div>
               </div>
               <div className="col-span-2">
+                <Select value={r.plan_code} onValueChange={(v) => changePlan(r, v)}>
+                  <SelectTrigger data-testid={`${TID.roomPlanSelectPrefix}${r.id}`} className="h-8 rounded-md border-[#E8E8E3] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    {plans.map((p) => (
+                      <SelectItem key={p.code} value={p.code}>
+                        {p.code} · ${p.price_monthly}/mo
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="text-[10px] text-[#666] mt-1 font-mono">
+                  {r.member_count}/{r.max_users} · {r.listener_only ? "listeners" : "PTT"}
+                </div>
+              </div>
+              <div className="col-span-2">
                 <button onClick={() => copyCode(r.room_code, r.id)} className="inline-flex items-center gap-1.5 text-xs font-mono border border-[#E8E8E3] rounded-sm px-2 py-1 hover:bg-white">
                   {r.room_code}
                   {copiedId === r.id ? <Check className="w-3 h-3 text-[#4C7D5B]" /> : <Copy className="w-3 h-3 text-[#666]" />}
                 </button>
               </div>
-              <div className="col-span-2 text-sm font-mono">{r.member_count}/15</div>
               <div className="col-span-2 flex justify-end gap-1.5">
                 <Button data-testid={`${TID.roomSuspendPrefix}${r.id}`} size="sm" variant="outline" onClick={() => toggleStatus(r)} className="h-8 rounded-md border-[#E8E8E3]">
                   {r.status === "active" ? <><Pause className="w-3 h-3 mr-1" strokeWidth={2} /> Suspend</> : <><Play className="w-3 h-3 mr-1" strokeWidth={2} /> Resume</>}
