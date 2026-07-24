@@ -313,7 +313,8 @@ export default function RoomPage() {
           if (!room.canPlaybackAudio) toast.warning("Browser blocked audio autoplay — click anywhere.");
         })
         .on(RoomEvent.Disconnected, () => { setState("idle"); setParticipants([]); })
-        .on(RoomEvent.ConnectionStateChanged, (cs) => { if (cs === ConnectionState.Connected) setState("connected"); });
+        .on(RoomEvent.ConnectionStateChanged, (cs) => { if (cs === ConnectionState.Connected) { setState("connected"); refreshParticipants(); } })
+        .on(RoomEvent.Reconnected, refreshParticipants);
 
       await room.connect(livekit_url, token);
       try { await room.startAudio(); } catch (_) {}
@@ -328,7 +329,11 @@ export default function RoomPage() {
       await room.localParticipant.setMicrophoneEnabled(true);
       const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
       if (pub?.track) { await pub.mute(); micTrackRef.current = pub.track; }
-      setState("connected"); refreshParticipants();
+      setState("connected");
+      refreshParticipants();
+      // Trailing refresh — some SDK versions populate remoteParticipants slightly after connect resolves
+      setTimeout(refreshParticipants, 400);
+      setTimeout(refreshParticipants, 1200);
       refreshDevices();
 
       try {
