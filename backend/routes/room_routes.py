@@ -110,7 +110,7 @@ async def get_livekit_token(payload: RoomTokenRequest, user: dict = Depends(get_
         .with_identity(user["id"])
         .with_name(user["name"])
         .with_grants(grants)
-        .with_metadata(f'{{"role":"{user["role"]}","name":"{user["name"]}","listenerOnly":{str(listener_only).lower()}}}')
+        .with_metadata(f'{{"role":"{user["role"]}","name":"{user["name"]}","email":"{user["email"]}","listenerOnly":{str(listener_only).lower()}}}')
     )
     return TokenResponse(
         token=token.to_jwt(),

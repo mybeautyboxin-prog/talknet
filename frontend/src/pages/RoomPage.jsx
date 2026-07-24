@@ -46,6 +46,10 @@ export default function RoomPage() {
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  // Speaker history — last N unique-by-identity speakers, most recent first
+  const [speakerHistory, setSpeakerHistory] = useState([]); // { identity, name, email, role, at }
+  const speakerHistoryRef = useRef([]);
+
   const roomRef = useRef(null);
   const micTrackRef = useRef(null);
   const talkingRef = useRef(false);
@@ -88,21 +92,56 @@ export default function RoomPage() {
     const build = (p, isLocal) => {
       let meta = {};
       try { meta = p.metadata ? JSON.parse(p.metadata) : {}; } catch (_) {}
-      const pubs = Array.from((p.audioTrackPublications?.values?.() || p.trackPublications?.values?.() || []));
+      let pubs = [];
+      try {
+        if (p.trackPublications && typeof p.trackPublications.forEach === "function") {
+          p.trackPublications.forEach((v) => pubs.push(v));
+        } else if (p.audioTrackPublications && typeof p.audioTrackPublications.forEach === "function") {
+          p.audioTrackPublications.forEach((v) => pubs.push(v));
+        }
+      } catch (_) {}
       const audioPub = pubs.find((x) => x.kind === Track.Kind.Audio || x.source === Track.Source.Microphone) || pubs[0];
       return {
         identity: p.identity,
         name: meta.name || p.name || p.identity,
+        email: meta.email || "",
         role: meta.role || (isLocal ? user?.role : "user"),
         isLocal,
-        isSpeaking: p.isSpeaking,
-        isMuted: audioPub ? audioPub.isMuted : true,
+        isSpeaking: !!p.isSpeaking,
+        isMuted: audioPub ? !!audioPub.isMuted : true,
         trackSid: audioPub?.trackSid,
       };
     };
     const list = [build(r.localParticipant, true)];
-    r.remoteParticipants.forEach((p) => list.push(build(p, false)));
+    const remotes = r.remoteParticipants;
+    if (remotes) {
+      if (typeof remotes.forEach === "function") {
+        remotes.forEach((p) => list.push(build(p, false)));
+      } else if (typeof remotes === "object") {
+        Object.values(remotes).forEach((p) => list.push(build(p, false)));
+      }
+    }
     setParticipants(list);
+
+    // Track speaker history — de-dupe head, cap at 10, debounce 1.5s
+    const speaking = list.filter((p) => p.isSpeaking && !p.isMuted);
+    if (speaking.length) {
+      const now = Date.now();
+      const cur = speakerHistoryRef.current;
+      const next = [...cur];
+      let changed = false;
+      for (const sp of speaking) {
+        const idx = next.findIndex((e) => e.identity === sp.identity);
+        if (idx === 0 && now - next[0].at < 1500) continue;
+        if (idx >= 0) next.splice(idx, 1);
+        next.unshift({ identity: sp.identity, name: sp.name, email: sp.email, role: sp.role, at: now });
+        changed = true;
+      }
+      if (changed) {
+        speakerHistoryRef.current = next.slice(0, 10);
+        setSpeakerHistory(speakerHistoryRef.current);
+      }
+    }
   }, [user]);
 
   // ---------- Data message helpers ----------
@@ -630,6 +669,7 @@ export default function RoomPage() {
                   <div className="font-semibold text-sm leading-tight">
                     {p.name} {p.isLocal && <span className="text-[#666] font-normal">(you)</span>}
                   </div>
+                  {p.email && <div className="text-[10px] text-[#666] font-mono truncate mt-0.5" title={p.email}>{p.email}</div>}
                   <div className="text-xs mt-1">
                     {p.isMuted ? (
                       <span className="text-[#666] inline-flex items-center gap-1"><MicOff className="w-3 h-3" strokeWidth={1.75} /> Silent</span>
@@ -657,6 +697,42 @@ export default function RoomPage() {
             );
           })}
         </div>
+
+        {/* Recent Speakers panel — admin only. Shows last 3 speakers with full caller ID. */}
+        {isHost && (
+          <div data-testid={TID.recentSpeakersPanel} className="mt-8 border border-[#E8E8E3] bg-white rounded-md p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Volume2 className="w-4 h-4 text-[#3A4F41]" strokeWidth={1.75} />
+              <div className="text-[11px] tracking-widest uppercase text-[#666]">Recent speakers</div>
+              <div className="ml-auto text-[10px] tracking-widest uppercase text-[#666]">last 3</div>
+            </div>
+            {speakerHistory.length === 0 ? (
+              <div className="text-sm text-[#666] py-4 text-center">No one has spoken yet.</div>
+            ) : (
+              <ol className="space-y-2">
+                {speakerHistory.slice(0, 3).map((s, i) => {
+                  const secs = Math.max(0, Math.floor((Date.now() - s.at) / 1000));
+                  const ago = secs < 60 ? `${secs}s ago` : `${Math.floor(secs / 60)}m ${secs % 60}s ago`;
+                  return (
+                    <li key={s.identity + "_" + s.at} data-testid={`${TID.recentSpeakerItemPrefix}${i}`} className="flex items-center gap-3 py-2 border-b border-[#E8E8E3] last:border-b-0">
+                      <div className="w-7 h-7 rounded-md bg-[#F2F2F0] flex items-center justify-center text-[11px] font-bold">
+                        {s.name.split(" ").slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "?"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm truncate">
+                          {s.name}
+                          {s.role === "room_admin" && <span className="ml-2 text-[10px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1 py-0.5">Host</span>}
+                        </div>
+                        <div className="text-[11px] text-[#666] font-mono truncate">{s.email || s.identity}</div>
+                      </div>
+                      <div className="text-[10px] tracking-widest uppercase text-[#666] font-mono whitespace-nowrap">{ago}</div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+        )}
       </div>
 
       {/* PTT bar */}

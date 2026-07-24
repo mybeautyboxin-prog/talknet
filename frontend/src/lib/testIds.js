@@ -75,6 +75,8 @@ export const TID = {
   roomDevicePicker: "room-device-picker-button",
   roomMicSelect: "room-mic-select",
   roomSpeakerSelect: "room-speaker-select",
+  recentSpeakersPanel: "recent-speakers-panel",
+  recentSpeakerItemPrefix: "recent-speaker-item-",
 
   // Admin recordings list
   adminRecordingsSection: "admin-recordings-section",
