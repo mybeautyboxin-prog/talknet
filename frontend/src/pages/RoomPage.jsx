@@ -49,6 +49,7 @@ export default function RoomPage() {
   // Speaker history — last N unique-by-identity speakers, most recent first
   const [speakerHistory, setSpeakerHistory] = useState([]); // { identity, name, email, role, at }
   const speakerHistoryRef = useRef([]);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const roomRef = useRef(null);
   const micTrackRef = useRef(null);
@@ -84,6 +85,13 @@ export default function RoomPage() {
       } catch (e) { setErrorMsg(formatApiError(e)); }
     })();
   }, [roomId]);
+
+  // Tick every 1s so "N s ago" timers stay fresh in the Recent Speakers strip.
+  useEffect(() => {
+    if (speakerHistory.length === 0) return;
+    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [speakerHistory.length]);
 
   // ---------- Participants snapshot ----------
   const refreshParticipants = useCallback(() => {
@@ -601,48 +609,6 @@ export default function RoomPage() {
           </div>
           <div className="flex items-center gap-2">
             {isHost && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button data-testid={TID.recentSpeakersTrigger} variant="outline" className="rounded-md border-[#E8E8E3] h-9 hidden sm:inline-flex">
-                    <Volume2 className="w-4 h-4 mr-1.5" strokeWidth={1.75} />
-                    <span className="text-[11px] tracking-widest uppercase">Recent</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-80 bg-white border-[#E8E8E3] rounded-md" data-testid={TID.recentSpeakersPanel}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Volume2 className="w-4 h-4 text-[#3A4F41]" strokeWidth={1.75} />
-                    <div className="text-[11px] tracking-widest uppercase text-[#666]">Recent speakers</div>
-                    <div className="ml-auto text-[10px] tracking-widest uppercase text-[#666]">last 3</div>
-                  </div>
-                  {speakerHistory.length === 0 ? (
-                    <div className="text-sm text-[#666] py-4 text-center">No one has spoken yet.</div>
-                  ) : (
-                    <ol className="space-y-1">
-                      {speakerHistory.slice(0, 3).map((s, i) => {
-                        const secs = Math.max(0, Math.floor((Date.now() - s.at) / 1000));
-                        const ago = secs < 60 ? `${secs}s ago` : `${Math.floor(secs / 60)}m ${secs % 60}s ago`;
-                        return (
-                          <li key={s.identity + "_" + s.at} data-testid={`${TID.recentSpeakerItemPrefix}${i}`} className="flex items-center gap-3 py-2 border-b border-[#E8E8E3] last:border-b-0">
-                            <div className="w-7 h-7 shrink-0 rounded-md bg-[#F2F2F0] flex items-center justify-center text-[11px] font-bold">
-                              {s.name.split(" ").slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "?"}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-semibold text-sm truncate">
-                                {s.name}
-                                {s.role === "room_admin" && <span className="ml-2 text-[10px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1 py-0.5">Host</span>}
-                              </div>
-                              <div className="text-[11px] text-[#666] font-mono truncate">{s.email || s.identity}</div>
-                            </div>
-                            <div className="text-[10px] tracking-widest uppercase text-[#666] font-mono whitespace-nowrap shrink-0">{ago}</div>
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                </PopoverContent>
-              </Popover>
-            )}
-            {isHost && (
               <Button
                 data-testid={TID.roomRecordToggle}
                 variant="outline"
@@ -693,6 +659,40 @@ export default function RoomPage() {
           </div>
         </div>
       </header>
+
+      {/* Recent Speakers — always-visible inline strip for admin. Live updates every 1s. */}
+      {isHost && (
+        <div data-testid={TID.recentSpeakersPanel} className="border-b border-[#E8E8E3] bg-[#F7F7F4] shrink-0">
+          <div className="max-w-6xl mx-auto px-4 sm:px-8 py-2 flex items-center gap-3 overflow-x-auto">
+            <div className="flex items-center gap-1.5 shrink-0 text-[10px] tracking-widest uppercase text-[#666]">
+              <Volume2 className="w-3.5 h-3.5 text-[#3A4F41]" strokeWidth={1.75} />
+              <span>Recent speakers</span>
+            </div>
+            {speakerHistory.length === 0 ? (
+              <span className="text-xs text-[#666] italic">No one has spoken yet.</span>
+            ) : (
+              <ol className="flex items-center gap-2 min-w-0">
+                {speakerHistory.slice(0, 3).map((s, i) => {
+                  const secs = Math.max(0, Math.floor((nowTick - s.at) / 1000));
+                  const ago = secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m${secs % 60}s`;
+                  const initials = s.name.split(" ").slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "?";
+                  return (
+                    <li key={s.identity + "_" + s.at} data-testid={`${TID.recentSpeakerItemPrefix}${i}`} className="flex items-center gap-2 bg-white border border-[#E8E8E3] rounded-full pl-1 pr-2.5 py-1 shrink-0">
+                      <div className="w-5 h-5 shrink-0 rounded-full bg-[#F2F2F0] flex items-center justify-center text-[9px] font-bold">{initials}</div>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs font-semibold truncate max-w-[8rem]" title={s.name}>{s.name}</span>
+                        {s.role === "room_admin" && <span className="text-[8px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1">Host</span>}
+                        <span className="text-[10px] text-[#666] font-mono hidden sm:inline truncate max-w-[9rem]" title={s.email || s.identity}>· {s.email || s.identity}</span>
+                        <span className="text-[10px] tracking-widest uppercase text-[#666] font-mono whitespace-nowrap">· {ago} ago</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+        </div>
+      )}
 
       <div ref={audioContainerRef} data-lk-audio-sink aria-hidden="true" style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} />
 
