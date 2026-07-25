@@ -80,3 +80,21 @@ Build a production-ready browser-based audio conferencing platform using React +
 ## Deployment fix 2026-02-XX
 - `.gitignore` had `.env.*` blocking `.env.example` from being committed. Added explicit negation rules (`!.env.example`, `!.env.sample`, `!.env.template` at root and nested) so template files ship with the repo for VPS `docker compose` bootstrap.
 
+
+## Update 2026-02-25 — Username-based user login (DONE)
+- **Owner & Admin** still log in with email + password.
+- **Room User** now logs in with **username + password** (no email needed). Admin sets the username when adding the user.
+- Login endpoint accepts `{identifier, password}` — auto-detects email vs username by `@`.
+- Username-lookup restricted to `role='user'` accounts (admins/owners can't be impersonated via a username collision).
+- DB: `users.email` → unique+sparse; `users.username` → unique+sparse. On startup `migrate_users_to_username_login()` backfills existing role=user docs by deriving username from email prefix (dedupes with `-N` suffix).
+- Validation: username regex `^[a-zA-Z0-9_.\-]+$`, length 3–40. Duplicate → 409.
+- Frontend: single "Email or Username" input on LoginPage; AdminDashboard's Add-member modal replaced email with username field + pattern validation.
+- Coverage: 13/13 pytest in `/app/backend/tests/test_username_auth.py`, all frontend flows verified by testing agent (100% pass).
+
+## Update 2026-02-25 — Grid auto-scale (P0 DONE)
+- Room page wrapper is now `h-screen ... overflow-hidden`. Zero page-level scrolling regardless of participant count.
+- Grid uses dynamic `gridTemplateColumns: repeat(N, minmax(0,1fr))` where `N = min(6, ceil(√count))`, and `gridAutoRows: minmax(0,1fr)` so tiles fill available height evenly.
+- Compact mode when >6 participants: smaller avatar/text and icon-only admin action buttons.
+- Recent Speakers panel moved from a section below the grid → a Popover triggered from the header (admin only). Grid now owns the full viewport.
+- PTT bar is a normal flex-footer (no longer sticky/pointer-events tricks).
+
