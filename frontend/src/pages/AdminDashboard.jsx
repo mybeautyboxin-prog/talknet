@@ -127,7 +127,7 @@ export default function AdminDashboard() {
               <div className="text-[11px] tracking-widest uppercase text-[#666] mb-2">Your Room</div>
               <h1 data-testid={TID.adminRoomName} className="text-4xl font-extrabold tracking-tight">{room.name}</h1>
               <div className="mt-4 flex items-center gap-4 text-sm text-[#666]">
-                <span className="inline-flex items-center gap-1.5"><Users2 className="w-4 h-4" strokeWidth={1.5} /> {members.length}/15 members</span>
+                <span className="inline-flex items-center gap-1.5"><Users2 className="w-4 h-4" strokeWidth={1.5} /> {members.length}/{room.max_users} members</span>
                 <span>·</span>
                 <span>Max {room.max_participants} concurrent</span>
                 <span>·</span>
@@ -170,7 +170,7 @@ export default function AdminDashboard() {
           <div>
             <div className="text-[11px] tracking-widest uppercase text-[#666] mb-1">Members</div>
             <h2 className="text-2xl font-extrabold tracking-tight">People in your room</h2>
-            <p className="text-xs text-[#666] mt-1">{members.length}/15 members. They can only see this room.</p>
+            <p className="text-xs text-[#666] mt-1">{members.length}/{room.max_users} members. They can only see this room.</p>
           </div>
           <Dialog open={memberDialogOpen} onOpenChange={setMemberDialogOpen}>
             <DialogTrigger asChild>
@@ -211,7 +211,7 @@ export default function AdminDashboard() {
             <div className="p-16 text-center">
               <Users2 className="w-8 h-8 mx-auto text-[#3A4F41] mb-3" strokeWidth={1.25} />
               <div className="font-bold text-lg tracking-tight">No members yet</div>
-              <div className="text-sm text-[#666] mt-1">Add up to 15 people who can join your audio room.</div>
+              <div className="text-sm text-[#666] mt-1">Add up to {room.max_users} people who can join your audio room.</div>
             </div>
           ) : members.map((m) => (
             <div key={m.id} className="flex items-center justify-between px-6 py-4 border-b border-[#E8E8E3] last:border-b-0 hover:bg-[#FAFAF7]">

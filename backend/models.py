@@ -21,20 +21,20 @@ PLANS: dict[str, dict] = {
     "A": {
         "code": "A",
         "name": "Plan A · Starter",
-        "max_users": 5,
+        "max_users": 10,
         "listener_only": False,
         "price_monthly": 9,
         "currency": "USD",
-        "description": "5 push-to-talk users in one room.",
+        "description": "10 push-to-talk users in one room.",
     },
     "B": {
         "code": "B",
         "name": "Plan B · Team",
-        "max_users": 10,
+        "max_users": 15,
         "listener_only": False,
         "price_monthly": 19,
         "currency": "USD",
-        "description": "10 push-to-talk users in one room.",
+        "description": "15 push-to-talk users in one room.",
     },
     "C": {
         "code": "C",
@@ -43,7 +43,7 @@ PLANS: dict[str, dict] = {
         "listener_only": True,
         "price_monthly": 29,
         "currency": "USD",
-        "description": "25 listener-only users in one room. Admin can grant mic on demand.",
+        "description": "25 always-muted users in one room. Admin can grant mic on demand.",
     },
 }
 DEFAULT_PLAN = "A"

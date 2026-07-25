@@ -137,7 +137,7 @@ export default function OwnerDashboard() {
                     <SelectContent className="bg-white">
                       {plans.map((p) => (
                         <SelectItem key={p.code} value={p.code}>
-                          {p.name} — ${p.price_monthly}/mo · {p.max_users} {p.listener_only ? "listeners" : "PTT users"}
+                          {p.name} — ${p.price_monthly}/mo · {p.max_users} {p.listener_only ? "muted listeners" : "PTT users"}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -204,7 +204,7 @@ export default function OwnerDashboard() {
                   </div>
                   <div className="text-sm text-[#666] leading-relaxed mb-4">{p.description}</div>
                   <ul className="text-sm space-y-1.5 mb-4">
-                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-[#4C7D5B]" strokeWidth={2.5} /> {p.max_users} {p.listener_only ? "listener-only users" : "PTT users"}</li>
+                    <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-[#4C7D5B]" strokeWidth={2.5} /> {p.max_users} {p.listener_only ? "always-muted users" : "PTT users"}</li>
                     <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-[#4C7D5B]" strokeWidth={2.5} /> 1 dedicated room</li>
                     <li className="flex items-center gap-2">
                       {p.listener_only
@@ -316,7 +316,7 @@ export default function OwnerDashboard() {
                   </SelectContent>
                 </Select>
                 <div className="text-[10px] text-[#666] mt-1 font-mono">
-                  {r.member_count}/{r.max_users} · {r.listener_only ? "listeners" : "PTT"}
+                  {r.member_count}/{r.max_users} · {r.listener_only ? "muted" : "PTT"}
                 </div>
               </div>
               <div className="col-span-2">

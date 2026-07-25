@@ -68,3 +68,15 @@ Build a production-ready browser-based audio conferencing platform using React +
 - Provide real LiveKit Cloud credentials (URL, API Key, API Secret)
 - Decide on recording storage backend for Phase 2
 - Optionally connect Resend for password / invite emails
+
+## Update 2026-02-XX — Plan capacity change
+- **Plan A · Starter** — 10 PTT users / 1 room / $9/mo (was 5)
+- **Plan B · Team** — 15 PTT users / 1 room / $19/mo (was 10)
+- **Plan C · Broadcast** — 25 always-muted users / 1 room / $29/mo (admin grants mic on demand)
+- All references pulled from central `PLANS` dict in `/app/backend/models.py`.
+- Fixed hardcoded `/15` member counts in AdminDashboard to use `room.max_users` (now plan-aware).
+- Wording refresh: "listener" / "listener-only" → "muted" / "always-muted" in Owner console + plan cards.
+
+## Deployment fix 2026-02-XX
+- `.gitignore` had `.env.*` blocking `.env.example` from being committed. Added explicit negation rules (`!.env.example`, `!.env.sample`, `!.env.template` at root and nested) so template files ship with the repo for VPS `docker compose` bootstrap.
+
