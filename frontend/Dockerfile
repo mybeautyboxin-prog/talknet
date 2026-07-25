@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # ─── Frontend build (Node) ─────────────────────────────────────
 FROM node:20-alpine AS build
 
@@ -7,8 +8,20 @@ WORKDIR /app
 ARG REACT_APP_BACKEND_URL
 ENV REACT_APP_BACKEND_URL=${REACT_APP_BACKEND_URL}
 
-COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile --network-timeout 600000
+# Copy manifest first (better layer caching).
+COPY package.json ./
+# Copy the lockfile if present — the wildcard makes it optional so the build
+# works even in forks where the lockfile hasn't been committed yet.
+COPY yarn.lock* ./
+
+# Use --frozen-lockfile when a real lockfile exists (reproducible builds),
+# fall back to a plain install otherwise.
+RUN if [ -f yarn.lock ]; then \
+      yarn install --frozen-lockfile --network-timeout 600000; \
+    else \
+      echo "WARNING: yarn.lock missing — installing without lockfile" && \
+      yarn install --network-timeout 600000; \
+    fi
 
 COPY . .
 RUN yarn build
