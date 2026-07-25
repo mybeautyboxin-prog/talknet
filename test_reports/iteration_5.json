@@ -1,0 +1,26 @@
+{
+  "summary": "Iteration 5: Verified USERNAME-BASED user login + P0 grid auto-scale. Backend: 13/13 pytest tests pass in /app/backend/tests/test_username_auth.py — owner/admin login via email, user login via username, wrong-pw error text differentiation (email vs username), old {email:} payload rejected (422), admin POST /admin/members with {name,username,password}, duplicate username 409, invalid-char rejection (422), immediate login by newly-created user, plan-shape (A=10 PTT, B=15 PTT, C=25 always-muted). Frontend: all UI flows work — LoginPage identifier field is type='text' with correct data-testid, owner→/platform, admin→/admin, user (alice.ops)→/room?id=..., admin dashboard shows usernames + member count '2/10' (dynamic per plan A cap 10), Add-member modal has member-username-input + no email input, room grid renders with dynamic gridTemplateColumns, no vertical scroll, recent-speakers-trigger + panel work, PTT bar (room-ptt-button) visible without scroll, owner plan cards render '10 push-to-talk users', '15 push-to-talk users', '25 always-muted users'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OwnerDashboard/testIds.js", "issue": "planCardPrefix, ownerPlansSection, ownerStatMRR, planSelect, roomPlanSelectPrefix constants were MISSING from testIds.js — OwnerDashboard rendered data-testid='undefinedA/B/C' etc. Fixed by adding the missing constants.", "selector": "[data-testid='plan-card-A']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_username_auth.py", "/app/test_reports/pytest/iter5_username_auth.xml"],
+  "action_items": [
+    "None required — testIds.js constants were added by testing agent. Main agent may wish to audit for other missing TID constants (e.g., verify all TID.* used in components are defined)."
+  ],
+  "critical_code_review_comments": [
+    "testIds.js was missing multiple constants referenced by OwnerDashboard.jsx (planCardPrefix, ownerPlansSection, ownerStatMRR, planSelect, roomPlanSelectPrefix). JS silently returns `undefined` on missing keys → data-testid became 'undefinedA'. Consider a lint rule or a strict typed map (TS) to catch these.",
+    "auth_routes.login logs client IP into the lockout key which is good; make sure X-Forwarded-For parsing trusts only the leftmost hop from a known proxy (currently blindly trusts XFF)."
+  ],
+  "updated_files": ["/app/frontend/src/lib/testIds.js", "/app/backend/tests/test_username_auth.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Owner: xpertcctv.delhi@gmail.com/love@2001 · Admin: bob.ops@example.com/Bob@12345 · User (username): alice.ops/Alice@12345, charlie/Charlie@123",
+  "seed_data_creation": "Test created and deleted a temp user 'tuser_<suffix>' via admin API for the create-then-login flow.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All batch-5 features (username login + grid auto-scale + always-muted copy) verified end-to-end. Bob's room_id feb97dad-08c7-4de0-b28d-fabb4a85719d is Plan A (10 max). Only cosmetic testids.js additions were needed. LiveKit mic in sandbox works enough to render tile + PTT bar (audio itself not tested — expected)."
+}

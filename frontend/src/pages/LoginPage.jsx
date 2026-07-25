@@ -17,7 +17,7 @@ const redirectFor = (u) => {
 
 export default function LoginPage() {
   const { login, user } = useAuth();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -34,7 +34,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setSubmitting(true);
-    const r = await login(email.trim(), password);
+    const r = await login(identifier.trim(), password);
     setSubmitting(false);
     if (!r.ok) {
       setError(r.error);
@@ -80,16 +80,17 @@ export default function LoginPage() {
 
           <div className="text-[11px] tracking-widest uppercase text-[#666666] mb-3">Console</div>
           <h1 className="text-4xl font-extrabold tracking-tight mb-2">Sign in</h1>
-          <p className="text-sm text-[#666666] mb-10">Use the email your platform admin gave you.</p>
+          <p className="text-sm text-[#666666] mb-10">Admins use their email. Room users use the username set by their admin.</p>
 
           <div className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-[11px] tracking-widest uppercase text-[#666666]">Email</Label>
-              <Input id="email" type="email" required value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                data-testid={TID.loginEmail}
+              <Label htmlFor="identifier" className="text-[11px] tracking-widest uppercase text-[#666666]">Email or Username</Label>
+              <Input id="identifier" type="text" required value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                data-testid={TID.loginIdentifier}
+                placeholder="you@example.com or username"
                 className="h-11 rounded-md border-[#E8E8E3] bg-white focus:border-[#3A4F41]"
-                autoComplete="email" />
+                autoComplete="username" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">

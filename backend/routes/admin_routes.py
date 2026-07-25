@@ -56,9 +56,9 @@ async def list_members(user: dict = Depends(admin_only)):
 async def add_member(payload: RoomMemberCreate, user: dict = Depends(admin_only)):
     db = get_db()
     room = await _get_my_room(db, user)
-    email = payload.email.lower().strip()
-    if await db.users.find_one({"email": email}):
-        raise HTTPException(status_code=409, detail="Email already in use")
+    username = payload.username.strip()
+    if await db.users.find_one({"username": username}):
+        raise HTTPException(status_code=409, detail="Username already in use")
     plan = _plan(room.get("plan_code", DEFAULT_PLAN))
     count = await db.users.count_documents({"room_id": room["id"], "role": "user"})
     if count >= plan["max_users"]:
@@ -68,7 +68,7 @@ async def add_member(payload: RoomMemberCreate, user: dict = Depends(admin_only)
         )
     new_user = {
         "id": new_id(),
-        "email": email,
+        "username": username,
         "password_hash": hash_password(payload.password),
         "name": payload.name,
         "role": "user",

@@ -5,7 +5,8 @@ export const TID = {
   landingCtaLogin: "landing-cta-login",
 
   // Login
-  loginEmail: "login-email-input",
+  loginIdentifier: "login-identifier-input",
+  loginEmail: "login-identifier-input", // legacy alias
   loginPassword: "login-password-input",
   loginSubmit: "login-submit-button",
   loginError: "login-error-message",
@@ -32,7 +33,12 @@ export const TID = {
   ownerStatActive: "owner-stat-active-rooms",
   ownerStatAdmins: "owner-stat-total-admins",
   ownerStatUsers: "owner-stat-total-users",
+  ownerStatMRR: "owner-stat-mrr",
   ownerAnalyticsSection: "owner-analytics-section",
+  ownerPlansSection: "owner-plans-section",
+  planCardPrefix: "plan-card-",
+  planSelect: "plan-select",
+  roomPlanSelectPrefix: "room-plan-select-",
 
   // Provision Room Dialog
   roomNameInput: "room-name-input",
@@ -53,7 +59,8 @@ export const TID = {
   adminAddMemberBtn: "admin-add-member-button",
   adminMemberList: "admin-member-list",
   memberNameInput: "member-name-input",
-  memberEmailInput: "member-email-input",
+  memberUsernameInput: "member-username-input",
+  memberEmailInput: "member-username-input", // legacy alias
   memberPasswordInput: "member-password-input",
   memberCreateSubmit: "member-create-submit-button",
   memberRemovePrefix: "member-remove-btn-",
@@ -76,6 +83,7 @@ export const TID = {
   roomMicSelect: "room-mic-select",
   roomSpeakerSelect: "room-speaker-select",
   recentSpeakersPanel: "recent-speakers-panel",
+  recentSpeakersTrigger: "recent-speakers-trigger",
   recentSpeakerItemPrefix: "recent-speaker-item-",
 
   // Admin recordings list

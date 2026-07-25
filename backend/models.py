@@ -53,7 +53,8 @@ DEFAULT_PLAN = "A"
 class UserPublic(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
-    email: EmailStr
+    email: Optional[EmailStr] = None
+    username: Optional[str] = None
     name: str
     role: Role
     room_id: Optional[str] = None
@@ -62,7 +63,7 @@ class UserPublic(BaseModel):
 
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    identifier: str = Field(min_length=1, max_length=255)
     password: str
 
 
@@ -112,7 +113,7 @@ class RoomPublic(BaseModel):
 # -------- Members --------
 class RoomMemberCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
-    email: EmailStr
+    username: str = Field(min_length=3, max_length=40, pattern=r"^[a-zA-Z0-9_.\-]+$")
     password: str = Field(min_length=6, max_length=128)
 
 

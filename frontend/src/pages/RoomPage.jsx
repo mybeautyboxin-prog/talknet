@@ -104,7 +104,7 @@ export default function RoomPage() {
       return {
         identity: p.identity,
         name: meta.name || p.name || p.identity,
-        email: meta.email || "",
+        email: meta.email || meta.username || "",
         role: meta.role || (isLocal ? user?.role : "user"),
         isLocal,
         isSpeaking: !!p.isSpeaking,
@@ -564,23 +564,27 @@ export default function RoomPage() {
   }
 
   const remoteCount = Math.max(participants.length - 1, 0);
+  // Auto-scale: pick cols so tiles fit the viewport as count grows.
+  // 1 → 1, 2 → 2, 3-4 → 2, 5-9 → 3, 10-16 → 4, 17-25 → 5, 26+ → 6
+  const gridCols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(participants.length || 1))));
+  const compact = participants.length > 6;
 
   return (
-    <div className="min-h-screen bg-[#FCFCFB] flex flex-col">
+    <div className="h-screen bg-[#FCFCFB] flex flex-col overflow-hidden">
       {/* Broadcasting banner — visible when host is on open-mic */}
       {hostBroadcasting && (
-        <div data-testid={TID.roomHostBroadcastBanner} className="bg-[#C84C4C] text-white px-6 py-2 flex items-center justify-center gap-2 text-[11px] tracking-widest uppercase font-bold">
+        <div data-testid={TID.roomHostBroadcastBanner} className="bg-[#C84C4C] text-white px-6 py-2 flex items-center justify-center gap-2 text-[11px] tracking-widest uppercase font-bold shrink-0">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
           {isHost ? "You are broadcasting" : `${hostBroadcasterName || "Host"} is broadcasting`}
         </div>
       )}
       {!isHost && grantedByHost && !hostBroadcasting && (
-        <div className="bg-[#4C7D5B] text-white px-6 py-2 flex items-center justify-center gap-2 text-[11px] tracking-widest uppercase font-bold">
+        <div className="bg-[#4C7D5B] text-white px-6 py-2 flex items-center justify-center gap-2 text-[11px] tracking-widest uppercase font-bold shrink-0">
           <Mic className="w-3 h-3" strokeWidth={2.5} /> The host has given you the mic — talk freely
         </div>
       )}
 
-      <header className="border-b border-[#E8E8E3] bg-white">
+      <header className="border-b border-[#E8E8E3] bg-white shrink-0">
         <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-md bg-[#3A4F41] flex items-center justify-center">
@@ -596,6 +600,48 @@ export default function RoomPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {isHost && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button data-testid={TID.recentSpeakersTrigger} variant="outline" className="rounded-md border-[#E8E8E3] h-9 hidden sm:inline-flex">
+                    <Volume2 className="w-4 h-4 mr-1.5" strokeWidth={1.75} />
+                    <span className="text-[11px] tracking-widest uppercase">Recent</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-80 bg-white border-[#E8E8E3] rounded-md" data-testid={TID.recentSpeakersPanel}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Volume2 className="w-4 h-4 text-[#3A4F41]" strokeWidth={1.75} />
+                    <div className="text-[11px] tracking-widest uppercase text-[#666]">Recent speakers</div>
+                    <div className="ml-auto text-[10px] tracking-widest uppercase text-[#666]">last 3</div>
+                  </div>
+                  {speakerHistory.length === 0 ? (
+                    <div className="text-sm text-[#666] py-4 text-center">No one has spoken yet.</div>
+                  ) : (
+                    <ol className="space-y-1">
+                      {speakerHistory.slice(0, 3).map((s, i) => {
+                        const secs = Math.max(0, Math.floor((Date.now() - s.at) / 1000));
+                        const ago = secs < 60 ? `${secs}s ago` : `${Math.floor(secs / 60)}m ${secs % 60}s ago`;
+                        return (
+                          <li key={s.identity + "_" + s.at} data-testid={`${TID.recentSpeakerItemPrefix}${i}`} className="flex items-center gap-3 py-2 border-b border-[#E8E8E3] last:border-b-0">
+                            <div className="w-7 h-7 shrink-0 rounded-md bg-[#F2F2F0] flex items-center justify-center text-[11px] font-bold">
+                              {s.name.split(" ").slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "?"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-sm truncate">
+                                {s.name}
+                                {s.role === "room_admin" && <span className="ml-2 text-[10px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1 py-0.5">Host</span>}
+                              </div>
+                              <div className="text-[11px] text-[#666] font-mono truncate">{s.email || s.identity}</div>
+                            </div>
+                            <div className="text-[10px] tracking-widest uppercase text-[#666] font-mono whitespace-nowrap shrink-0">{ago}</div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </PopoverContent>
+              </Popover>
+            )}
             {isHost && (
               <Button
                 data-testid={TID.roomRecordToggle}
@@ -650,27 +696,37 @@ export default function RoomPage() {
 
       <div ref={audioContainerRef} data-lk-audio-sink aria-hidden="true" style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} />
 
-      <div className="flex-1 max-w-6xl mx-auto w-full px-8 py-10">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4" data-testid={TID.roomParticipantList}>
+      <main className="flex-1 min-h-0 max-w-6xl mx-auto w-full px-4 sm:px-8 py-4 flex flex-col overflow-hidden">
+        <div
+          className="flex-1 min-h-0 grid gap-2 sm:gap-3 overflow-hidden"
+          data-testid={TID.roomParticipantList}
+          style={{
+            gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
+            gridAutoRows: "minmax(0, 1fr)",
+          }}
+        >
           {participants.map((p) => {
             const granted = grantedMicSet.has(p.identity);
             return (
-              <div key={p.identity} className={`bg-white border rounded-md p-5 flex flex-col items-start gap-3 transition-colors duration-200 ${p.isSpeaking && !p.isMuted ? "border-[#4C7D5B] speaking-ring" : "border-[#E8E8E3]"}`}>
-                <div className="w-full flex items-center justify-between">
-                  <div className="w-11 h-11 rounded-md bg-[#F2F2F0] flex items-center justify-center font-bold text-[#111]">
+              <div
+                key={p.identity}
+                className={`bg-white border rounded-md ${compact ? "p-2" : "p-3 sm:p-4"} flex flex-col justify-between gap-1.5 min-w-0 min-h-0 overflow-hidden transition-colors duration-200 ${p.isSpeaking && !p.isMuted ? "border-[#4C7D5B] speaking-ring" : "border-[#E8E8E3]"}`}
+              >
+                <div className="w-full flex items-start justify-between gap-2 min-w-0">
+                  <div className={`${compact ? "w-8 h-8 text-xs" : "w-10 h-10 sm:w-11 sm:h-11"} shrink-0 rounded-md bg-[#F2F2F0] flex items-center justify-center font-bold text-[#111]`}>
                     {p.name.split(" ").slice(0, 2).map((s) => s[0]).join("").toUpperCase()}
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {p.role === "room_admin" && <span className="text-[10px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1.5 py-0.5">Host</span>}
-                    {granted && p.role !== "room_admin" && <span className="text-[10px] tracking-widest uppercase text-[#4C7D5B] border border-[#4C7D5B]/40 rounded-sm px-1.5 py-0.5">Open mic</span>}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {p.role === "room_admin" && <span className="text-[9px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1 py-0.5">Host</span>}
+                    {granted && p.role !== "room_admin" && <span className="text-[9px] tracking-widest uppercase text-[#4C7D5B] border border-[#4C7D5B]/40 rounded-sm px-1 py-0.5">Mic</span>}
                   </div>
                 </div>
-                <div>
-                  <div className="font-semibold text-sm leading-tight">
+                <div className="min-w-0">
+                  <div className={`font-semibold ${compact ? "text-xs" : "text-sm"} leading-tight truncate`}>
                     {p.name} {p.isLocal && <span className="text-[#666] font-normal">(you)</span>}
                   </div>
-                  {p.email && <div className="text-[10px] text-[#666] font-mono truncate mt-0.5" title={p.email}>{p.email}</div>}
-                  <div className="text-xs mt-1">
+                  {p.email && !compact && <div className="text-[10px] text-[#666] font-mono truncate mt-0.5" title={p.email}>{p.email}</div>}
+                  <div className={`${compact ? "text-[10px]" : "text-xs"} mt-0.5`}>
                     {p.isMuted ? (
                       <span className="text-[#666] inline-flex items-center gap-1"><MicOff className="w-3 h-3" strokeWidth={1.75} /> Silent</span>
                     ) : p.isSpeaking ? (
@@ -680,16 +736,29 @@ export default function RoomPage() {
                     )}
                   </div>
                 </div>
-                {isHost && !p.isLocal && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Button data-testid={`${TID.participantGrantMicPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => toggleGrantMic(p.identity, !granted)} className={`h-7 text-[11px] rounded-md ${granted ? "border-[#4C7D5B] text-[#4C7D5B]" : "border-[#E8E8E3]"}`}>
-                      <Zap className="w-3 h-3 mr-1" strokeWidth={2} /> {granted ? "Revoke" : "Give mic"}
+                {isHost && !p.isLocal && !compact && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <Button data-testid={`${TID.participantGrantMicPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => toggleGrantMic(p.identity, !granted)} className={`h-6 text-[10px] px-2 rounded-md ${granted ? "border-[#4C7D5B] text-[#4C7D5B]" : "border-[#E8E8E3]"}`}>
+                      <Zap className="w-3 h-3 mr-0.5" strokeWidth={2} /> {granted ? "Revoke" : "Mic"}
                     </Button>
-                    <Button data-testid={`${TID.participantMutePrefix}${p.identity}`} size="sm" variant="outline" onClick={() => handleMuteRemote(p)} className="h-7 text-[11px] rounded-md border-[#E8E8E3]">
-                      <VolumeX className="w-3 h-3 mr-1" strokeWidth={2} /> Mute
+                    <Button data-testid={`${TID.participantMutePrefix}${p.identity}`} size="sm" variant="outline" onClick={() => handleMuteRemote(p)} className="h-6 text-[10px] px-2 rounded-md border-[#E8E8E3]">
+                      <VolumeX className="w-3 h-3 mr-0.5" strokeWidth={2} /> Mute
                     </Button>
-                    <Button data-testid={`${TID.participantKickPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => setParticipantToKick(p)} className="h-7 text-[11px] rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]">
-                      <UserX className="w-3 h-3 mr-1" strokeWidth={2} /> Kick
+                    <Button data-testid={`${TID.participantKickPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => setParticipantToKick(p)} className="h-6 text-[10px] px-2 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]">
+                      <UserX className="w-3 h-3" strokeWidth={2} />
+                    </Button>
+                  </div>
+                )}
+                {isHost && !p.isLocal && compact && (
+                  <div className="flex gap-1">
+                    <Button data-testid={`${TID.participantGrantMicPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => toggleGrantMic(p.identity, !granted)} className={`h-6 w-6 p-0 rounded-md ${granted ? "border-[#4C7D5B] text-[#4C7D5B]" : "border-[#E8E8E3]"}`} title={granted ? "Revoke mic" : "Give mic"}>
+                      <Zap className="w-3 h-3" strokeWidth={2} />
+                    </Button>
+                    <Button data-testid={`${TID.participantMutePrefix}${p.identity}`} size="sm" variant="outline" onClick={() => handleMuteRemote(p)} className="h-6 w-6 p-0 rounded-md border-[#E8E8E3]" title="Mute">
+                      <VolumeX className="w-3 h-3" strokeWidth={2} />
+                    </Button>
+                    <Button data-testid={`${TID.participantKickPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => setParticipantToKick(p)} className="h-6 w-6 p-0 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]" title="Kick">
+                      <UserX className="w-3 h-3" strokeWidth={2} />
                     </Button>
                   </div>
                 )}
@@ -697,47 +766,11 @@ export default function RoomPage() {
             );
           })}
         </div>
+      </main>
 
-        {/* Recent Speakers panel — admin only. Shows last 3 speakers with full caller ID. */}
-        {isHost && (
-          <div data-testid={TID.recentSpeakersPanel} className="mt-8 border border-[#E8E8E3] bg-white rounded-md p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Volume2 className="w-4 h-4 text-[#3A4F41]" strokeWidth={1.75} />
-              <div className="text-[11px] tracking-widest uppercase text-[#666]">Recent speakers</div>
-              <div className="ml-auto text-[10px] tracking-widest uppercase text-[#666]">last 3</div>
-            </div>
-            {speakerHistory.length === 0 ? (
-              <div className="text-sm text-[#666] py-4 text-center">No one has spoken yet.</div>
-            ) : (
-              <ol className="space-y-2">
-                {speakerHistory.slice(0, 3).map((s, i) => {
-                  const secs = Math.max(0, Math.floor((Date.now() - s.at) / 1000));
-                  const ago = secs < 60 ? `${secs}s ago` : `${Math.floor(secs / 60)}m ${secs % 60}s ago`;
-                  return (
-                    <li key={s.identity + "_" + s.at} data-testid={`${TID.recentSpeakerItemPrefix}${i}`} className="flex items-center gap-3 py-2 border-b border-[#E8E8E3] last:border-b-0">
-                      <div className="w-7 h-7 rounded-md bg-[#F2F2F0] flex items-center justify-center text-[11px] font-bold">
-                        {s.name.split(" ").slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "?"}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm truncate">
-                          {s.name}
-                          {s.role === "room_admin" && <span className="ml-2 text-[10px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1 py-0.5">Host</span>}
-                        </div>
-                        <div className="text-[11px] text-[#666] font-mono truncate">{s.email || s.identity}</div>
-                      </div>
-                      <div className="text-[10px] tracking-widest uppercase text-[#666] font-mono whitespace-nowrap">{ago}</div>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* PTT bar */}
-      <div className="sticky bottom-0 left-0 right-0 px-8 pb-8 pointer-events-none">
-        <div className="max-w-3xl mx-auto pointer-events-auto">
+      {/* PTT bar — pinned at the bottom, part of the flex column */}
+      <div className="shrink-0 px-4 sm:px-8 pb-4 pt-2">
+        <div className="max-w-3xl mx-auto">
           {isHost && (
             <div className="mb-3 flex items-center justify-end gap-3 text-[11px] tracking-widest uppercase text-[#666]">
               <Zap className={`w-3.5 h-3.5 ${continuousMic ? "text-[#4C7D5B]" : "text-[#666]"}`} strokeWidth={2} />

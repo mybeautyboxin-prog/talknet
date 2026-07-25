@@ -36,26 +36,37 @@ def _identifier(request: Request, email: str) -> str:
 @router.post("/login")
 async def login(payload: UserLogin, request: Request):
     db = get_db()
-    email = payload.email.lower().strip()
-    ident = _identifier(request, email)
+    identifier = payload.identifier.strip()
+    if not identifier:
+        raise HTTPException(status_code=400, detail="Email or username is required")
 
-    locked_until = await check_and_get_lockout(ident)
+    is_email = "@" in identifier
+    lookup = identifier.lower() if is_email else identifier  # usernames are case-sensitive
+    ident_key = _identifier(request, lookup)
+
+    locked_until = await check_and_get_lockout(ident_key)
     if locked_until:
         remaining = int((locked_until - datetime.now(timezone.utc)).total_seconds() / 60) + 1
         raise HTTPException(status_code=429, detail=f"Too many failed attempts. Try again in {remaining} minute(s).")
 
-    user = await db.users.find_one({"email": email})
+    if is_email:
+        user = await db.users.find_one({"email": lookup})
+    else:
+        # Usernames only exist on role=user accounts (admins/owners use email)
+        user = await db.users.find_one({"username": lookup, "role": "user"})
+
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
-        count = await record_failed_login(ident)
+        count = await record_failed_login(ident_key)
         remaining = MAX_LOGIN_ATTEMPTS - count
         if remaining <= 0:
             raise HTTPException(status_code=429, detail=f"Too many failed attempts. Locked for {LOCKOUT_MINUTES} minutes.")
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        detail = "Invalid email or password" if is_email else "Invalid username or password"
+        raise HTTPException(status_code=401, detail=detail)
 
     if user.get("status") == "suspended":
         raise HTTPException(status_code=403, detail="Account suspended")
 
-    await clear_login_attempts(ident)
+    await clear_login_attempts(ident_key)
     token = create_access_token(user["id"], user["role"])
     return {
         "token": token,

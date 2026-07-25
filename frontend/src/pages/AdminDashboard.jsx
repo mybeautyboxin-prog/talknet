@@ -19,7 +19,7 @@ export default function AdminDashboard() {
   const [copied, setCopied] = useState(false);
 
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
-  const [memberForm, setMemberForm] = useState({ name: "", email: "", password: "" });
+  const [memberForm, setMemberForm] = useState({ name: "", username: "", password: "" });
   const [creatingMember, setCreatingMember] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [recordingToDelete, setRecordingToDelete] = useState(null);
@@ -189,8 +189,20 @@ export default function AdminDashboard() {
                   <Input required data-testid={TID.memberNameInput} value={memberForm.name} onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} className="h-10 rounded-md border-[#E8E8E3]" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Email</Label>
-                  <Input type="email" required data-testid={TID.memberEmailInput} value={memberForm.email} onChange={(e) => setMemberForm({ ...memberForm, email: e.target.value })} className="h-10 rounded-md border-[#E8E8E3]" />
+                  <Label>Username</Label>
+                  <Input
+                    required
+                    minLength={3}
+                    maxLength={40}
+                    pattern="[a-zA-Z0-9_.\-]+"
+                    title="3–40 chars. Letters, numbers, dot, dash, underscore."
+                    data-testid={TID.memberUsernameInput}
+                    value={memberForm.username}
+                    onChange={(e) => setMemberForm({ ...memberForm, username: e.target.value })}
+                    placeholder="e.g. alice.ops"
+                    className="h-10 rounded-md border-[#E8E8E3] font-mono"
+                  />
+                  <p className="text-[10px] text-[#666]">They will sign in with this username (no email needed).</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Temporary password</Label>
@@ -221,7 +233,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <div className="font-semibold text-sm">{m.name}</div>
-                  <div className="text-xs text-[#666] font-mono">{m.email}</div>
+                  <div className="text-xs text-[#666] font-mono">{m.username || m.email}</div>
                 </div>
               </div>
               <Button

@@ -53,7 +53,14 @@ async def create_indexes():
     await db.rooms.create_index("customer_id")  # legacy, not unique
 
     # ---- Users ----
-    await db.users.create_index("email", unique=True)
+    # email: unique + sparse (admins/owners have it; users may not)
+    # username: unique + sparse (users have it; admins/owners don't)
+    await _drop_conflicting_indexes(db.users, [
+        ("email", {"unique": True, "sparse": True}),
+        ("username", {"unique": True, "sparse": True}),
+    ])
+    await db.users.create_index("email", unique=True, sparse=True)
+    await db.users.create_index("username", unique=True, sparse=True)
     await db.users.create_index("room_id")
 
     # ---- Password reset + login attempts + sessions ----
@@ -132,3 +139,33 @@ async def migrate_to_3_role_model():
 
     # 6) Backfill status on rooms that came from the old model
     await db.rooms.update_many({"status": {"$exists": False}}, {"$set": {"status": "active"}})
+
+
+async def migrate_users_to_username_login():
+    """
+    Backfill `username` for role=user accounts (who now log in via username, not email).
+    - Derive from email prefix (before '@'), lowercased, non-alphanum → underscore.
+    - Handle duplicates by appending -2, -3, ...
+    - Preserve email as a soft field (won't be used for user login but not deleted).
+    Idempotent — only touches docs missing `username`.
+    """
+    db = get_db()
+    import re
+    users = await db.users.find({"role": "user", "username": {"$exists": False}}).to_list(5000)
+    for u in users:
+        email = (u.get("email") or "").strip().lower()
+        if not email:
+            # No email either — derive from name/id
+            base = re.sub(r"[^a-z0-9]+", "_", (u.get("name") or u["id"][:8]).lower()).strip("_") or u["id"][:8]
+        else:
+            base = re.sub(r"[^a-z0-9._\-]+", "_", email.split("@")[0]).strip("_") or "user"
+        # Ensure min length 3
+        if len(base) < 3:
+            base = f"user_{base}"
+        candidate = base
+        suffix = 1
+        while await db.users.find_one({"username": candidate}):
+            suffix += 1
+            candidate = f"{base}-{suffix}"
+        await db.users.update_one({"id": u["id"]}, {"$set": {"username": candidate}})
+        log.warning(f"Migration: assigned username '{candidate}' to user {u.get('email') or u['id']}")

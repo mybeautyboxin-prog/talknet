@@ -9,7 +9,7 @@ import logging
 from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
 
-from db import get_db, create_indexes, migrate_to_3_role_model
+from db import get_db, create_indexes, migrate_to_3_role_model, migrate_users_to_username_login
 from auth import hash_password, verify_password
 from models import now_iso, new_id
 
@@ -84,6 +84,7 @@ async def seed_platform_owner():
 async def _startup():
     await migrate_to_3_role_model()
     await create_indexes()
+    await migrate_users_to_username_login()
     await seed_platform_owner()
 
 
