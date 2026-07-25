@@ -88,7 +88,15 @@ frontend/node_modules/.cache/default-development/4.pack
 .env
 .env.*
 *.env
+# Allow example/template env files to be committed for deployment reference
+!.env.example
+!.env.sample
+!.env.template
+!**/.env.example
+!**/.env.sample
+!**/.env.template
 credentials.json
 *.key
 .credentials
 frontend/node_modules/.cache/default-development/5.pack
+frontend/node_modules/.cache/default-development/10.pack
