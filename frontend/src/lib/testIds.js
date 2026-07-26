@@ -50,6 +50,11 @@ export const TID = {
   roomSuspendPrefix: "room-suspend-btn-",
   roomDeletePrefix: "room-delete-btn-",
   roomDeleteConfirm: "room-delete-confirm-button",
+  roomResetAdminPrefix: "room-reset-admin-btn-",
+  roomResetAdminDialog: "room-reset-admin-dialog",
+  roomResetAdminNewPassword: "room-reset-admin-new-password",
+  roomResetAdminConfirmPassword: "room-reset-admin-confirm-password",
+  roomResetAdminSubmit: "room-reset-admin-submit",
 
   // Admin Dashboard (single room)
   adminRoomName: "admin-room-name",
@@ -65,6 +70,11 @@ export const TID = {
   memberCreateSubmit: "member-create-submit-button",
   memberRemovePrefix: "member-remove-btn-",
   memberRemoveConfirm: "member-remove-confirm-button",
+  memberResetPrefix: "member-reset-btn-",
+  memberResetDialog: "member-reset-dialog",
+  memberResetNewPassword: "member-reset-new-password",
+  memberResetConfirmPassword: "member-reset-confirm-password",
+  memberResetSubmit: "member-reset-submit",
 
   // Room / PTT
   roomEnter: "room-enter-button",

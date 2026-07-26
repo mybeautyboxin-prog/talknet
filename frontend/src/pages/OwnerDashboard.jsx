@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Radio, Trash2, Pause, Play, Copy, Check, TrendingUp, Package, Zap } from "lucide-react";
+import { Plus, Radio, Trash2, Pause, Play, Copy, Check, TrendingUp, Package, Zap, KeyRound } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api, formatApiError } from "@/lib/api";
 import { TID } from "@/lib/testIds";
@@ -28,6 +28,9 @@ export default function OwnerDashboard() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [roomToDelete, setRoomToDelete] = useState(null);
+  const [roomToResetAdmin, setRoomToResetAdmin] = useState(null);
+  const [adminResetForm, setAdminResetForm] = useState({ new_password: "", confirm: "" });
+  const [resettingAdmin, setResettingAdmin] = useState(false);
   const [planChanging, setPlanChanging] = useState(null); // { room, newPlan }
 
   const [form, setForm] = useState({ room_name: "", admin_name: "", admin_email: "", admin_password: "", plan_code: "A" });
@@ -92,6 +95,23 @@ export default function OwnerDashboard() {
       setRoomToDelete(null);
       loadAll();
     } catch (e) { toast.error(formatApiError(e)); }
+  };
+
+  const doResetAdmin = async (e) => {
+    e.preventDefault();
+    if (!roomToResetAdmin) return;
+    if (adminResetForm.new_password !== adminResetForm.confirm) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setResettingAdmin(true);
+    try {
+      await api.post(`/platform/rooms/${roomToResetAdmin.id}/reset-admin-password`, { new_password: adminResetForm.new_password });
+      toast.success(`Password reset for ${roomToResetAdmin.admin?.name || "admin"}`);
+      setRoomToResetAdmin(null);
+      setAdminResetForm({ new_password: "", confirm: "" });
+    } catch (e) { toast.error(formatApiError(e)); }
+    finally { setResettingAdmin(false); }
   };
 
   const copyCode = async (code, id) => {
@@ -326,6 +346,17 @@ export default function OwnerDashboard() {
                 </button>
               </div>
               <div className="col-span-2 flex justify-end gap-1.5">
+                <Button
+                  data-testid={`${TID.roomResetAdminPrefix}${r.id}`}
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { setRoomToResetAdmin(r); setAdminResetForm({ new_password: "", confirm: "" }); }}
+                  disabled={!r.admin}
+                  className="h-8 rounded-md border-[#E8E8E3]"
+                  title={r.admin ? `Reset ${r.admin.email}'s password` : "Room has no admin"}
+                >
+                  <KeyRound className="w-3 h-3" strokeWidth={2} />
+                </Button>
                 <Button data-testid={`${TID.roomSuspendPrefix}${r.id}`} size="sm" variant="outline" onClick={() => toggleStatus(r)} className="h-8 rounded-md border-[#E8E8E3]">
                   {r.status === "active" ? <><Pause className="w-3 h-3 mr-1" strokeWidth={2} /> Suspend</> : <><Play className="w-3 h-3 mr-1" strokeWidth={2} /> Resume</>}
                 </Button>
@@ -354,6 +385,53 @@ export default function OwnerDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!roomToResetAdmin} onOpenChange={(o) => !o && setRoomToResetAdmin(null)}>
+        <DialogContent className="bg-white border-[#E8E8E3] rounded-md sm:max-w-md" data-testid={TID.roomResetAdminDialog}>
+          <form onSubmit={doResetAdmin}>
+            <DialogHeader>
+              <DialogTitle className="font-extrabold tracking-tight">Reset admin password</DialogTitle>
+              <DialogDescription className="text-[#666]">
+                Set a new password for <span className="font-semibold text-[#111]">{roomToResetAdmin?.admin?.name}</span> ({roomToResetAdmin?.admin?.email}), admin of <span className="font-semibold text-[#111]">{roomToResetAdmin?.name}</span>. Share it with them securely — this replaces their old password immediately.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-1.5">
+                <Label>New password</Label>
+                <Input
+                  type="text"
+                  required
+                  minLength={6}
+                  data-testid={TID.roomResetAdminNewPassword}
+                  value={adminResetForm.new_password}
+                  onChange={(e) => setAdminResetForm({ ...adminResetForm, new_password: e.target.value })}
+                  className="h-10 rounded-md border-[#E8E8E3] font-mono"
+                  placeholder="At least 6 characters"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Confirm password</Label>
+                <Input
+                  type="text"
+                  required
+                  minLength={6}
+                  data-testid={TID.roomResetAdminConfirmPassword}
+                  value={adminResetForm.confirm}
+                  onChange={(e) => setAdminResetForm({ ...adminResetForm, confirm: e.target.value })}
+                  className="h-10 rounded-md border-[#E8E8E3] font-mono"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRoomToResetAdmin(null)} className="rounded-md">Cancel</Button>
+              <Button type="submit" disabled={resettingAdmin} data-testid={TID.roomResetAdminSubmit} className="rounded-md bg-[#3A4F41] hover:bg-[#2A3D31] text-white">
+                {resettingAdmin ? "Saving…" : "Reset password"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
     </AppLayout>
   );
 }

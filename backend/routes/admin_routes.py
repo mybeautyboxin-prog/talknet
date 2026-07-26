@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from db import get_db
-from models import RoomMemberCreate, UserPublic, RoomPublic, PLANS, DEFAULT_PLAN, now_iso, new_id
+from models import RoomMemberCreate, UserPublic, RoomPublic, PasswordResetPayload, PLANS, DEFAULT_PLAN, now_iso, new_id
 from auth import require_roles, hash_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -91,3 +91,18 @@ async def remove_member(user_id: str, user: dict = Depends(admin_only)):
         raise HTTPException(status_code=404, detail="Member not found in your room")
     await db.users.delete_one({"id": user_id})
     return None
+
+
+@router.post("/members/{user_id}/reset-password")
+async def reset_member_password(user_id: str, payload: PasswordResetPayload, user: dict = Depends(admin_only)):
+    """Admin sets a new password for one of their room's users."""
+    db = get_db()
+    room = await _get_my_room(db, user)
+    target = await db.users.find_one({"id": user_id})
+    if not target or target.get("role") != "user" or target.get("room_id") != room["id"]:
+        raise HTTPException(status_code=404, detail="Member not found in your room")
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"password_hash": hash_password(payload.new_password)}},
+    )
+    return {"ok": True, "message": f"Password reset for {target.get('username') or target.get('name')}"}

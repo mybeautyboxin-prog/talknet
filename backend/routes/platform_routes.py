@@ -7,6 +7,7 @@ from models import (
     RoomPlanUpdate,
     RoomPublic,
     UserPublic,
+    PasswordResetPayload,
     PLANS,
     DEFAULT_PLAN,
     now_iso,
@@ -163,6 +164,26 @@ async def delete_room(room_id: str, _u: dict = Depends(owner_only)):
     await db.recordings.delete_many({"room_id": room_id})
     await db.rooms.delete_one({"id": room_id})
     return None
+
+
+@router.post("/rooms/{room_id}/reset-admin-password")
+async def reset_room_admin_password(room_id: str, payload: PasswordResetPayload, _u: dict = Depends(owner_only)):
+    """Platform owner resets the password of the room's admin."""
+    db = get_db()
+    room = await db.rooms.find_one({"id": room_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    admin_id = room.get("admin_user_id")
+    if not admin_id:
+        raise HTTPException(status_code=404, detail="Room has no admin assigned")
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get("role") != "room_admin":
+        raise HTTPException(status_code=404, detail="Room admin not found")
+    await db.users.update_one(
+        {"id": admin_id},
+        {"$set": {"password_hash": hash_password(payload.new_password)}},
+    )
+    return {"ok": True, "message": f"Password reset for {admin.get('email')}"}
 
 
 @router.get("/stats")

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserPlus, Copy, Check, Trash2, Radio, Users2, Download, FileAudio2 } from "lucide-react";
+import { UserPlus, Copy, Check, Trash2, Radio, Users2, Download, FileAudio2, KeyRound } from "lucide-react";
 import { api, formatApiError, API_BASE } from "@/lib/api";
 import { TID } from "@/lib/testIds";
 import AppLayout from "@/components/AppLayout";
@@ -22,6 +22,9 @@ export default function AdminDashboard() {
   const [memberForm, setMemberForm] = useState({ name: "", username: "", password: "" });
   const [creatingMember, setCreatingMember] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
+  const [memberToReset, setMemberToReset] = useState(null);
+  const [resetForm, setResetForm] = useState({ new_password: "", confirm: "" });
+  const [resetting, setResetting] = useState(false);
   const [recordingToDelete, setRecordingToDelete] = useState(null);
 
   const navigate = useNavigate();
@@ -64,6 +67,23 @@ export default function AdminDashboard() {
       setMemberToRemove(null);
       load();
     } catch (e) { toast.error(formatApiError(e)); }
+  };
+
+  const doResetMember = async (e) => {
+    e.preventDefault();
+    if (!memberToReset) return;
+    if (resetForm.new_password !== resetForm.confirm) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setResetting(true);
+    try {
+      await api.post(`/admin/members/${memberToReset.id}/reset-password`, { new_password: resetForm.new_password });
+      toast.success(`Password reset for ${memberToReset.name}`);
+      setMemberToReset(null);
+      setResetForm({ new_password: "", confirm: "" });
+    } catch (e) { toast.error(formatApiError(e)); }
+    finally { setResetting(false); }
   };
 
   const doDeleteRecording = async () => {
@@ -236,15 +256,26 @@ export default function AdminDashboard() {
                   <div className="text-xs text-[#666] font-mono">{m.username || m.email}</div>
                 </div>
               </div>
-              <Button
-                data-testid={`${TID.memberRemovePrefix}${m.id}`}
-                variant="outline"
-                size="sm"
-                onClick={() => setMemberToRemove(m)}
-                className="h-8 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]"
-              >
-                <Trash2 className="w-3 h-3 mr-1" strokeWidth={2} /> Remove
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  data-testid={`${TID.memberResetPrefix}${m.id}`}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setMemberToReset(m); setResetForm({ new_password: "", confirm: "" }); }}
+                  className="h-8 rounded-md border-[#E8E8E3] hover:bg-[#F2F2F0]"
+                >
+                  <KeyRound className="w-3 h-3 mr-1" strokeWidth={2} /> Reset password
+                </Button>
+                <Button
+                  data-testid={`${TID.memberRemovePrefix}${m.id}`}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMemberToRemove(m)}
+                  className="h-8 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]"
+                >
+                  <Trash2 className="w-3 h-3 mr-1" strokeWidth={2} /> Remove
+                </Button>
+              </div>
             </div>
           ))}
         </div>
@@ -312,6 +343,53 @@ export default function AdminDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!memberToReset} onOpenChange={(o) => !o && setMemberToReset(null)}>
+        <DialogContent className="bg-white border-[#E8E8E3] rounded-md sm:max-w-md" data-testid={TID.memberResetDialog}>
+          <form onSubmit={doResetMember}>
+            <DialogHeader>
+              <DialogTitle className="font-extrabold tracking-tight">Reset password</DialogTitle>
+              <DialogDescription className="text-[#666]">
+                Set a new password for <span className="font-semibold text-[#111]">{memberToReset?.name}</span> ({memberToReset?.username || memberToReset?.email}). Share it with them securely — this replaces their old password immediately.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-1.5">
+                <Label>New password</Label>
+                <Input
+                  type="text"
+                  required
+                  minLength={6}
+                  data-testid={TID.memberResetNewPassword}
+                  value={resetForm.new_password}
+                  onChange={(e) => setResetForm({ ...resetForm, new_password: e.target.value })}
+                  className="h-10 rounded-md border-[#E8E8E3] font-mono"
+                  placeholder="At least 6 characters"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Confirm password</Label>
+                <Input
+                  type="text"
+                  required
+                  minLength={6}
+                  data-testid={TID.memberResetConfirmPassword}
+                  value={resetForm.confirm}
+                  onChange={(e) => setResetForm({ ...resetForm, confirm: e.target.value })}
+                  className="h-10 rounded-md border-[#E8E8E3] font-mono"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMemberToReset(null)} className="rounded-md">Cancel</Button>
+              <Button type="submit" disabled={resetting} data-testid={TID.memberResetSubmit} className="rounded-md bg-[#3A4F41] hover:bg-[#2A3D31] text-white">
+                {resetting ? "Saving…" : "Reset password"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
 
       <AlertDialog open={!!recordingToDelete} onOpenChange={(o) => !o && setRecordingToDelete(null)}>
         <AlertDialogContent className="bg-white border-[#E8E8E3] rounded-md">
