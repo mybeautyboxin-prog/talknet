@@ -1,0 +1,22 @@
+{
+  "summary": "Verified the reported bug fix: creating multiple users in sequence from the Admin Dashboard UI. Logged in as Bob (room_admin) via UI, created 3 members (Alpha/Beta/Gamma) back-to-back WITHOUT page reload — all 3 succeeded, modal closed each time, and all appeared in the members list (5/10 members). Verified modal fields are empty on every reopen, including after typing + Escape-cancel (onOpenChange reset). Verified duplicate username still shows the 409 'Username already in use' toast with the modal staying open. Backend regression via pytest: 409 duplicate, 422 invalid username chars, 403 non-admin — all pass. All UI-created test users deleted; alice.ops and charlie intact. bcrypt hashes are $2b$12$ for all accounts.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "CORS (all endpoints)", "issue": "Response sends access-control-allow-origin: * together with access-control-allow-credentials: true (invalid combo per CORS spec). Harmless today because auth is Bearer/localStorage, but will break if cookie auth is ever adopted."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [{"screen": "Admin Dashboard (1920x1080)", "issues": ["Sonner success toast (top-right) overlaps/covers the 'Sign out' button in the nav bar while visible"]}]
+  },
+  "test_report_links": ["/app/backend/tests/test_member_create_regression.py", "/app/test_reports/pytest/iter9_member_create.xml"],
+  "action_items": ["Optional: offset toast position (or nav) so success toasts don't cover the Sign out button", "Optional: replace CORS wildcard origin with explicit origin list when allow_credentials=True"],
+  "critical_code_review_comments": ["Fix at AdminDashboard.jsx:56 is correct (resets username, not stale email) and the onOpenChange reset at line 195 is a good safety net; no residual stale-state paths found for the member form."],
+  "updated_files": ["/app/backend/tests/test_member_create_regression.py", "/app/test_reports/iteration_9.json"],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (all create/reset/validation assertions passed)"},
+  "seed_data_creation": "Created ui_alpha_/ui_beta_/ui_gamma_<ts> members via UI; all deleted afterwards via DELETE /api/admin/members/{id}. Seeded alice.ops and charlie untouched.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "bob.ops@example.com / Bob@12345 (room_admin); alice.ops / Alice@12345; charlie / Charlie@123",
+  "context_for_next_testing_agent": "Multi-user creation bug is FIXED and verified end-to-end in the UI. Reusable regression file: /app/backend/tests/test_member_create_regression.py (also auto-cleans ui_*/TEST_ members). Room 'Ops Channel' plan A: max_users=10, currently 2 members. Preview URL in review request was stale — use REACT_APP_BACKEND_URL from /app/frontend/.env (https://realtime-voice-hub-6.preview.emergentagent.com).",
+  "rca_of_the_issue": "Confirmed fixed: previously the post-create form reset used the removed `email` key, leaving memberForm.username populated so the second submit re-sent the first username and got 409. Now reset uses `username` and also resets on dialog close."
+}

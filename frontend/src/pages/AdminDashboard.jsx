@@ -53,7 +53,7 @@ export default function AdminDashboard() {
       await api.post("/admin/members", memberForm);
       toast.success(`${memberForm.name} added`);
       setMemberDialogOpen(false);
-      setMemberForm({ name: "", email: "", password: "" });
+      setMemberForm({ name: "", username: "", password: "" });
       load();
     } catch (err) { toast.error(formatApiError(err)); }
     finally { setCreatingMember(false); }
@@ -192,7 +192,7 @@ export default function AdminDashboard() {
             <h2 className="text-2xl font-extrabold tracking-tight">People in your room</h2>
             <p className="text-xs text-[#666] mt-1">{members.length}/{room.max_users} members. They can only see this room.</p>
           </div>
-          <Dialog open={memberDialogOpen} onOpenChange={setMemberDialogOpen}>
+          <Dialog open={memberDialogOpen} onOpenChange={(o) => { setMemberDialogOpen(o); if (!o) setMemberForm({ name: "", username: "", password: "" }); }}>
             <DialogTrigger asChild>
               <Button data-testid={TID.adminAddMemberBtn} className="bg-[#3A4F41] hover:bg-[#2f4136] text-[#FCFCFB] h-11 px-5 rounded-md">
                 <UserPlus className="w-4 h-4 mr-1.5" /> Add member
