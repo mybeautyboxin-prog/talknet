@@ -118,6 +118,7 @@ export default function RoomPage() {
         isSpeaking: !!p.isSpeaking,
         isMuted: audioPub ? !!audioPub.isMuted : true,
         trackSid: audioPub?.trackSid,
+        connectionQuality: p.connectionQuality || "unknown",
       };
     };
     const list = [build(r.localParticipant, true)];
@@ -336,6 +337,7 @@ export default function RoomPage() {
         })
         .on(RoomEvent.TrackUnsubscribed, (track) => { detachAudio(track); refreshParticipants(); })
         .on(RoomEvent.ActiveSpeakersChanged, refreshParticipants)
+        .on(RoomEvent.ConnectionQualityChanged, refreshParticipants)
         .on(RoomEvent.DataReceived, (payload, participant) => {
           try {
             const msg = JSON.parse(dec.decode(payload));
@@ -723,6 +725,22 @@ export default function RoomPage() {
             return { key: "idle", card: "bg-white border-[#E8E8E3] text-[#111]", colored: false, label: "Idle", Icon: Mic };
           };
 
+          /**
+           * Map LiveKit ConnectionQuality → 3-level UI signal.
+           *  excellent/good → 🟢 Good, poor → 🟡 Weak, lost/unknown → 🔴 Poor.
+           */
+          const getQuality = (q) => {
+            switch (q) {
+              case "excellent":
+              case "good":
+                return { level: "good", label: "Good", dot: "bg-[#4C7D5B]", ring: "ring-[#4C7D5B]/40", emoji: "🟢" };
+              case "poor":
+                return { level: "weak", label: "Weak", dot: "bg-[#E5B93B]", ring: "ring-[#E5B93B]/40", emoji: "🟡" };
+              default:
+                return { level: "poor", label: "Poor", dot: "bg-[#C84C4C]", ring: "ring-[#C84C4C]/40", emoji: "🔴" };
+            }
+          };
+
           const renderCard = (p, size /* 'large' | 'normal' | 'compact' */) => {
             const st = getCardState(p);
             const granted = grantedMicSet.has(p.identity);
@@ -745,6 +763,20 @@ export default function RoomPage() {
                     {initials}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
+                    {(() => {
+                      const q = getQuality(p.connectionQuality);
+                      return (
+                        <span
+                          data-testid={`${TID.participantQualityPrefix}${p.identity}`}
+                          data-quality={q.level}
+                          title={`Network: ${q.label}`}
+                          className={`inline-flex items-center gap-1 text-[9px] tracking-widest uppercase rounded-sm px-1 py-0.5 border ${st.colored ? "border-white/50 text-white" : "border-[#E8E8E3] text-[#666]"}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${q.dot} ring-2 ${q.ring}`} aria-hidden="true" />
+                          {q.label}
+                        </span>
+                      );
+                    })()}
                     {p.role === "room_admin" && (
                       <span className={`text-[9px] tracking-widest uppercase rounded-sm px-1 py-0.5 border ${st.colored ? "border-white/50 text-white" : "border-[#3A4F41]/40 text-[#3A4F41]"}`}>Host</span>
                     )}

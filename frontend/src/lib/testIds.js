@@ -84,6 +84,7 @@ export const TID = {
   roomAdminSection: "room-admin-section",
   roomUserSection: "room-user-section",
   participantCardPrefix: "participant-card-",
+  participantQualityPrefix: "participant-quality-",
   roomStatusIndicator: "room-status-indicator",
   participantMutePrefix: "participant-mute-btn-",
   participantKickPrefix: "participant-kick-btn-",
