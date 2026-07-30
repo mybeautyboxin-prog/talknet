@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 7 (UI-only room layout change) tested on preview URL. Found and fixed a BLOCKING crash: RoomPage.jsx used <Users2/> without importing it from lucide-react, so the whole room page threw 'ReferenceError: Users2 is not defined' immediately after LiveKit connect (white/error screen, no cards, no PTT) for BOTH admin and user. After adding the missing import, all requested UI behaviours verified: admin section pinned at top, user section below, non-admin viewer sees exactly 2 cards (admin + self, Charlie hidden), data-state attribute values correct (muted=rgb(200,76,76), idle=white), no page scroll (scrollHeight == innerHeight = 1080), empty states correct, host controls (grant-mic/mute/kick), recorder, device picker, recent-speakers strip (admin only) present, PTT via space bar functional. Backend regression: 7/7 pytest passed (owner/admin/user login + /api/auth/me + roles, bad-password, forgot-password, invalid reset token, unauthenticated room/info).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "RoomPage.jsx", "issue": "FIXED BY TESTER: missing `Users2` import from lucide-react caused ReferenceError and full room-page crash for every role (room unusable). Import added to line 4 — main agent should keep it.", "selector": "[data-testid='room-user-section']", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [
+      {"flow": "Speaking colour states (speaking-admin orange / speaking-user green) and 2.5s persistence", "issue": "Could not be exercised end-to-end: headless Chrome fake mic emits silence so LiveKit isSpeaking never became true. Verified only by code review (hex #E68A3B / #4C7D5B and 2500ms window via lastSpokeAtRef + 500ms nowTick are implemented correctly). LOGIC CONCERN: getCardState gates speakingActive on `!p.isMuted`, so in PTT mode releasing Space mutes the track instantly and the card flips to RED immediately — the 2.5s colour persistence is effectively unobservable except in Open-mic mode.", "affected_selectors": ["[data-testid^='participant-card-']"]}
+    ],
+    "design_issues": [
+      {"screen": "Room — user view with 1-2 cards", "issues": ["User-section grid uses gridAutoRows 1fr, so a single member card stretches to ~640px tall (giant solid red block with name pinned to the bottom). Cap card max-height (or centre content) when visibleUsers <= 2.", "Header status text shows 'LIVE · HOST + YOU' for the user even when the host has not joined (admin section says 'Waiting for the room host to join…') — inconsistent."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter7_regression.py", "/app/test_reports/pytest/iter7_regression.xml"],
+  "action_items": [
+    "Keep the added `Users2` import in RoomPage.jsx (was a hard crash of the room page).",
+    "Decide whether speaking-colour persistence should survive the PTT mute (currently muted overrides it instantly).",
+    "Limit user-card height when only 1-2 members are visible (currently full-height red block).",
+    "Align room header status text with actual host presence."
+  ],
+  "critical_code_review_comments": [
+    "RoomPage.jsx is 903 lines — split (ParticipantCard, PTTBar, RecordingControls, useLiveKitRoom hook). The 145-line IIFE inside <main> re-creates getCardState/renderCard on every 500ms tick.",
+    "nowTick interval (500ms) now runs unconditionally for the page lifetime; consider gating it on connected state.",
+    "Non-admin viewer filtering happens client-side only (users.filter(p => p.isLocal)); other participants' identities/metadata are still received from LiveKit, so this is a UI-only privacy measure."
+  ],
+  "updated_files": ["/app/frontend/src/pages/RoomPage.jsx", "/app/backend/tests/test_iter7_regression.py"],
+  "success_rate": {"backend": "100%", "frontend": "90%"},
+  "seed_data_creation": "None — used existing seeded accounts (bob.ops, alice.ops, charlie) and room 'Ops Channel' (feb97dad-08c7-4de0-b28d-fabb4a85719d).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "owner xpertcctv.delhi@gmail.com/love@2001; admin bob.ops@example.com/Bob@12345; users alice.ops/Alice@12345, charlie/Charlie@123 — all valid",
+  "context_for_next_testing_agent": "Multi-participant testing works via browser.new_context() per role with permissions=['microphone']; admin enters via [data-testid='admin-enter-room-button'] then [data-testid='room-enter-button'], users land directly on /room and click room-enter-button. Speaking states cannot be produced in headless (no audio) — assert data-state for idle/muted only. Compact mode (>6 users) untested: plan caps concurrency at 5. Screenshots: /app/test_reports/admin_room_view.png, admin_room_ptt.png, user_room_view_alice.png, admin_room_view_with_users.png, user_room_no_admin.png.",
+  "rca_of_the_issue": "RoomPage.jsx line 824 renders <Users2 /> for the user-section header but the lucide-react import list (line 4) omitted Users2, producing a ReferenceError during render right after the LiveKit room connected, which unmounted the RoomPage subtree (react error overlay, no cards/PTT). Fix: add Users2 to the lucide-react import."
+}

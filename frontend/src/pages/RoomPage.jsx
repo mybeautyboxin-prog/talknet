@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Room, RoomEvent, Track, ConnectionState } from "livekit-client";
-import { Mic, MicOff, PhoneOff, Radio, Volume2, VolumeX, UserX, Loader2, Zap, Settings, CircleDot, Square } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Radio, Volume2, VolumeX, UserX, Loader2, Zap, Settings, CircleDot, Square, Users2 } from "lucide-react";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ export default function RoomPage() {
   // Speaker history — last N unique-by-identity speakers, most recent first
   const [speakerHistory, setSpeakerHistory] = useState([]); // { identity, name, email, role, at }
   const speakerHistoryRef = useRef([]);
+  const lastSpokeAtRef = useRef({}); // { [identity]: timestamp } — tracks last-active moment for 2.5s color persistence
   const [nowTick, setNowTick] = useState(Date.now());
 
   const roomRef = useRef(null);
@@ -86,12 +87,11 @@ export default function RoomPage() {
     })();
   }, [roomId]);
 
-  // Tick every 1s so "N s ago" timers stay fresh in the Recent Speakers strip.
+  // Tick every 500ms — needed so the 2.5s speaking-color persistence and "N s ago" strip stay accurate.
   useEffect(() => {
-    if (speakerHistory.length === 0) return;
-    const t = setInterval(() => setNowTick(Date.now()), 1000);
+    const t = setInterval(() => setNowTick(Date.now()), 500);
     return () => clearInterval(t);
-  }, [speakerHistory.length]);
+  }, []);
 
   // ---------- Participants snapshot ----------
   const refreshParticipants = useCallback(() => {
@@ -130,6 +130,12 @@ export default function RoomPage() {
       }
     }
     setParticipants(list);
+
+    // Update per-identity last-spoke timestamps (used for 2.5s color persistence after speech ends).
+    const nowTs = Date.now();
+    for (const p of list) {
+      if (p.isSpeaking && !p.isMuted) lastSpokeAtRef.current[p.identity] = nowTs;
+    }
 
     // Track speaker history — de-dupe head, cap at 10, debounce 1.5s
     const speaking = list.filter((p) => p.isSpeaking && !p.isMuted);
@@ -572,10 +578,6 @@ export default function RoomPage() {
   }
 
   const remoteCount = Math.max(participants.length - 1, 0);
-  // Auto-scale: pick cols so tiles fit the viewport as count grows.
-  // 1 → 1, 2 → 2, 3-4 → 2, 5-9 → 3, 10-16 → 4, 17-25 → 5, 26+ → 6
-  const gridCols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(participants.length || 1))));
-  const compact = participants.length > 6;
 
   return (
     <div className="h-screen bg-[#FCFCFB] flex flex-col overflow-hidden">
@@ -602,7 +604,7 @@ export default function RoomPage() {
               <div className="font-extrabold tracking-tight leading-tight">{roomMeta?.name}</div>
               <div className="text-[11px] tracking-widest uppercase text-[#666]" data-testid={TID.roomStatusIndicator}>
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#4C7D5B] mr-1.5 align-middle animate-pulse" />
-                Live · {participants.length} {participants.length === 1 ? "person" : "people"}
+                Live · {isHost ? `${participants.length} ${participants.length === 1 ? "person" : "people"}` : `Host + you`}
                 {recording && <span className="ml-3 text-[#C84C4C] font-bold">● REC</span>}
               </div>
             </div>
@@ -696,76 +698,152 @@ export default function RoomPage() {
 
       <div ref={audioContainerRef} data-lk-audio-sink aria-hidden="true" style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} />
 
-      <main className="flex-1 min-h-0 max-w-6xl mx-auto w-full px-4 sm:px-8 py-4 flex flex-col overflow-hidden">
-        <div
-          className="flex-1 min-h-0 grid gap-2 sm:gap-3 overflow-hidden"
-          data-testid={TID.roomParticipantList}
-          style={{
-            gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
-            gridAutoRows: "minmax(0, 1fr)",
-          }}
-        >
-          {participants.map((p) => {
+      <main className="flex-1 min-h-0 max-w-6xl mx-auto w-full px-4 sm:px-8 py-4 flex flex-col gap-3 overflow-hidden">
+        {/* ─── ADMIN SECTION — always visible at the top ─── */}
+        {(() => {
+          const admins = participants.filter((p) => p.role === "room_admin");
+          const users = participants.filter((p) => p.role !== "room_admin");
+          // Non-admin viewer only ever sees admin + themselves.
+          const visibleUsers = isHost ? users : users.filter((p) => p.isLocal);
+          const userGridCols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(visibleUsers.length || 1))));
+          const compact = visibleUsers.length > 6;
+
+          const getCardState = (p) => {
+            const lastSpoke = lastSpokeAtRef.current[p.identity] || 0;
+            const justSpoke = nowTick - lastSpoke < 2500;
+            const speakingActive = (p.isSpeaking || justSpoke) && !p.isMuted;
+            if (speakingActive) {
+              return p.role === "room_admin"
+                ? { key: "speaking-admin", card: "bg-[#E68A3B] border-[#B87226] text-white", colored: true, label: "Speaking", Icon: Volume2 }
+                : { key: "speaking-user", card: "bg-[#4C7D5B] border-[#3A6046] text-white", colored: true, label: "Speaking", Icon: Volume2 };
+            }
+            if (p.isMuted) {
+              return { key: "muted", card: "bg-[#C84C4C] border-[#a63c3c] text-white", colored: true, label: "Muted", Icon: MicOff };
+            }
+            return { key: "idle", card: "bg-white border-[#E8E8E3] text-[#111]", colored: false, label: "Idle", Icon: Mic };
+          };
+
+          const renderCard = (p, size /* 'large' | 'normal' | 'compact' */) => {
+            const st = getCardState(p);
             const granted = grantedMicSet.has(p.identity);
+            const c = size === "compact";
+            const lg = size === "large";
+            const initials = p.name.split(" ").slice(0, 2).map((s) => s[0]).join("").toUpperCase() || "?";
+            const subText = st.colored ? "text-white/75" : "text-[#666]";
+            const outlineBtn = st.colored
+              ? "border-white/40 text-white hover:bg-white/10"
+              : "border-[#E8E8E3]";
             return (
               <div
                 key={p.identity}
-                className={`bg-white border rounded-md ${compact ? "p-2" : "p-3 sm:p-4"} flex flex-col justify-between gap-1.5 min-w-0 min-h-0 overflow-hidden transition-colors duration-200 ${p.isSpeaking && !p.isMuted ? "border-[#4C7D5B] speaking-ring" : "border-[#E8E8E3]"}`}
+                data-testid={`${TID.participantCardPrefix}${p.identity}`}
+                data-state={st.key}
+                className={`border rounded-md ${c ? "p-2" : lg ? "p-4 sm:p-5" : "p-3 sm:p-4"} flex flex-col justify-between gap-1.5 min-w-0 min-h-0 overflow-hidden transition-colors duration-300 ${st.card}`}
               >
                 <div className="w-full flex items-start justify-between gap-2 min-w-0">
-                  <div className={`${compact ? "w-8 h-8 text-xs" : "w-10 h-10 sm:w-11 sm:h-11"} shrink-0 rounded-md bg-[#F2F2F0] flex items-center justify-center font-bold text-[#111]`}>
-                    {p.name.split(" ").slice(0, 2).map((s) => s[0]).join("").toUpperCase()}
+                  <div className={`${c ? "w-8 h-8 text-xs" : lg ? "w-12 h-12 sm:w-14 sm:h-14 text-base" : "w-10 h-10 sm:w-11 sm:h-11"} shrink-0 rounded-md font-bold flex items-center justify-center ${st.colored ? "bg-white/25 text-white" : "bg-[#F2F2F0] text-[#111]"}`}>
+                    {initials}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    {p.role === "room_admin" && <span className="text-[9px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1 py-0.5">Host</span>}
-                    {granted && p.role !== "room_admin" && <span className="text-[9px] tracking-widest uppercase text-[#4C7D5B] border border-[#4C7D5B]/40 rounded-sm px-1 py-0.5">Mic</span>}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className={`font-semibold ${compact ? "text-xs" : "text-sm"} leading-tight truncate`}>
-                    {p.name} {p.isLocal && <span className="text-[#666] font-normal">(you)</span>}
-                  </div>
-                  {p.email && !compact && <div className="text-[10px] text-[#666] font-mono truncate mt-0.5" title={p.email}>{p.email}</div>}
-                  <div className={`${compact ? "text-[10px]" : "text-xs"} mt-0.5`}>
-                    {p.isMuted ? (
-                      <span className="text-[#666] inline-flex items-center gap-1"><MicOff className="w-3 h-3" strokeWidth={1.75} /> Silent</span>
-                    ) : p.isSpeaking ? (
-                      <span className="text-[#4C7D5B] inline-flex items-center gap-1"><Volume2 className="w-3 h-3" strokeWidth={2} /> Speaking</span>
-                    ) : (
-                      <span className="text-[#666] inline-flex items-center gap-1"><Mic className="w-3 h-3" strokeWidth={1.75} /> Live</span>
+                    {p.role === "room_admin" && (
+                      <span className={`text-[9px] tracking-widest uppercase rounded-sm px-1 py-0.5 border ${st.colored ? "border-white/50 text-white" : "border-[#3A4F41]/40 text-[#3A4F41]"}`}>Host</span>
+                    )}
+                    {granted && p.role !== "room_admin" && (
+                      <span className={`text-[9px] tracking-widest uppercase rounded-sm px-1 py-0.5 border ${st.colored ? "border-white/50 text-white" : "border-[#4C7D5B]/40 text-[#4C7D5B]"}`}>Mic</span>
                     )}
                   </div>
                 </div>
-                {isHost && !p.isLocal && !compact && (
+                <div className="min-w-0">
+                  <div className={`font-semibold ${c ? "text-xs" : lg ? "text-base" : "text-sm"} leading-tight truncate`}>
+                    {p.name} {p.isLocal && <span className={`font-normal ${subText}`}>(you)</span>}
+                  </div>
+                  {p.email && !c && <div className={`text-[10px] font-mono truncate mt-0.5 ${subText}`} title={p.email}>{p.email}</div>}
+                  <div className={`${c ? "text-[10px]" : "text-xs"} mt-0.5 inline-flex items-center gap-1`}>
+                    <st.Icon className="w-3 h-3" strokeWidth={st.label === "Speaking" ? 2 : 1.75} />
+                    {st.label}
+                  </div>
+                </div>
+                {isHost && !p.isLocal && !c && (
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <Button data-testid={`${TID.participantGrantMicPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => toggleGrantMic(p.identity, !granted)} className={`h-6 text-[10px] px-2 rounded-md ${granted ? "border-[#4C7D5B] text-[#4C7D5B]" : "border-[#E8E8E3]"}`}>
+                    <Button data-testid={`${TID.participantGrantMicPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => toggleGrantMic(p.identity, !granted)} className={`h-6 text-[10px] px-2 rounded-md ${outlineBtn} ${granted && !st.colored ? "border-[#4C7D5B] text-[#4C7D5B]" : ""}`}>
                       <Zap className="w-3 h-3 mr-0.5" strokeWidth={2} /> {granted ? "Revoke" : "Mic"}
                     </Button>
-                    <Button data-testid={`${TID.participantMutePrefix}${p.identity}`} size="sm" variant="outline" onClick={() => handleMuteRemote(p)} className="h-6 text-[10px] px-2 rounded-md border-[#E8E8E3]">
+                    <Button data-testid={`${TID.participantMutePrefix}${p.identity}`} size="sm" variant="outline" onClick={() => handleMuteRemote(p)} className={`h-6 text-[10px] px-2 rounded-md ${outlineBtn}`}>
                       <VolumeX className="w-3 h-3 mr-0.5" strokeWidth={2} /> Mute
                     </Button>
-                    <Button data-testid={`${TID.participantKickPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => setParticipantToKick(p)} className="h-6 text-[10px] px-2 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]">
+                    <Button data-testid={`${TID.participantKickPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => setParticipantToKick(p)} className={`h-6 text-[10px] px-2 rounded-md ${outlineBtn} ${!st.colored ? "hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]" : ""}`}>
                       <UserX className="w-3 h-3" strokeWidth={2} />
                     </Button>
                   </div>
                 )}
-                {isHost && !p.isLocal && compact && (
+                {isHost && !p.isLocal && c && (
                   <div className="flex gap-1">
-                    <Button data-testid={`${TID.participantGrantMicPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => toggleGrantMic(p.identity, !granted)} className={`h-6 w-6 p-0 rounded-md ${granted ? "border-[#4C7D5B] text-[#4C7D5B]" : "border-[#E8E8E3]"}`} title={granted ? "Revoke mic" : "Give mic"}>
+                    <Button data-testid={`${TID.participantGrantMicPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => toggleGrantMic(p.identity, !granted)} className={`h-6 w-6 p-0 rounded-md ${outlineBtn} ${granted && !st.colored ? "border-[#4C7D5B] text-[#4C7D5B]" : ""}`} title={granted ? "Revoke mic" : "Give mic"}>
                       <Zap className="w-3 h-3" strokeWidth={2} />
                     </Button>
-                    <Button data-testid={`${TID.participantMutePrefix}${p.identity}`} size="sm" variant="outline" onClick={() => handleMuteRemote(p)} className="h-6 w-6 p-0 rounded-md border-[#E8E8E3]" title="Mute">
+                    <Button data-testid={`${TID.participantMutePrefix}${p.identity}`} size="sm" variant="outline" onClick={() => handleMuteRemote(p)} className={`h-6 w-6 p-0 rounded-md ${outlineBtn}`} title="Mute">
                       <VolumeX className="w-3 h-3" strokeWidth={2} />
                     </Button>
-                    <Button data-testid={`${TID.participantKickPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => setParticipantToKick(p)} className="h-6 w-6 p-0 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]" title="Kick">
+                    <Button data-testid={`${TID.participantKickPrefix}${p.identity}`} size="sm" variant="outline" onClick={() => setParticipantToKick(p)} className={`h-6 w-6 p-0 rounded-md ${outlineBtn} ${!st.colored ? "hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]" : ""}`} title="Kick">
                       <UserX className="w-3 h-3" strokeWidth={2} />
                     </Button>
                   </div>
                 )}
               </div>
             );
-          })}
-        </div>
+          };
+
+          return (
+            <>
+              {/* Admin cards — pinned strip at the top, always visible. */}
+              <section data-testid={TID.roomAdminSection} className="shrink-0">
+                <div className="flex items-center gap-2 mb-1.5 text-[10px] tracking-widest uppercase text-[#666]">
+                  <Radio className="w-3 h-3" strokeWidth={2} />
+                  <span>Room Host</span>
+                </div>
+                {admins.length === 0 ? (
+                  <div className="border border-dashed border-[#E8E8E3] rounded-md p-4 text-center text-sm text-[#666] italic bg-white">
+                    Waiting for the room host to join…
+                  </div>
+                ) : (
+                  <div
+                    className="grid gap-2 sm:gap-3"
+                    style={{ gridTemplateColumns: `repeat(${Math.min(admins.length, 3)}, minmax(0, 1fr))` }}
+                  >
+                    {admins.map((a) => renderCard(a, "large"))}
+                  </div>
+                )}
+              </section>
+
+              {/* User cards — flexible area below. For non-admin viewer this is just themselves. */}
+              <section
+                data-testid={TID.roomUserSection}
+                className="flex-1 min-h-0 flex flex-col overflow-hidden"
+              >
+                <div className="flex items-center gap-2 mb-1.5 text-[10px] tracking-widest uppercase text-[#666] shrink-0">
+                  <Users2 className="w-3 h-3" strokeWidth={2} />
+                  <span>{isHost ? `Members (${visibleUsers.length})` : "You"}</span>
+                </div>
+                {visibleUsers.length === 0 ? (
+                  <div className="flex-1 min-h-0 border border-dashed border-[#E8E8E3] rounded-md flex items-center justify-center text-sm text-[#666] italic bg-white">
+                    {isHost ? "No members have joined yet." : "Waiting…"}
+                  </div>
+                ) : (
+                  <div
+                    className="flex-1 min-h-0 grid gap-2 sm:gap-3 overflow-hidden"
+                    data-testid={TID.roomParticipantList}
+                    style={{
+                      gridTemplateColumns: `repeat(${userGridCols}, minmax(0, 1fr))`,
+                      gridAutoRows: "minmax(0, 1fr)",
+                    }}
+                  >
+                    {visibleUsers.map((u) => renderCard(u, compact ? "compact" : "normal"))}
+                  </div>
+                )}
+              </section>
+            </>
+          );
+        })()}
       </main>
 
       {/* PTT bar — pinned at the bottom, part of the flex column */}
