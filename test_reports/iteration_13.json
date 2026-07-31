@@ -1,0 +1,26 @@
+{
+  "summary": "Focused frontend retest of the mix-limiter strengthening (compressor threshold=-6, knee=6, ratio=20, attack=0.001, release=0.15, master=0.75, per-source 0.85) plus a quick regression of the other 4 PTT-clip features. ALL GREEN. (A) Synthetic-oscillator sweep through an exact replica of the RoomPage clip graph (MediaRecorder -> decodeAudioData -> peak): 1 src @0.9 = 0.617 | 2 srcs (300+700Hz) @0.9 = 0.690 | 3 srcs @0.9 = 0.734 | 4 srcs @0.9 = 0.783 | 4 COHERENT 300Hz @1.0 (worst case) = 0.688 | 6 srcs @1.0 = 0.910. Zero clipped samples (>=0.999) in every case vs 2025/118080 hard-clipped previously. All peaks in the 0.6-0.92 band, i.e. <=1.0 target met with margin. (B) REAL end-to-end clips on the live room: single live source (alice 300Hz osc) peak = 0.624, 0 clipped, duration_ms=7214 / talk_duration_ms=2212 (present, not compressed to silence, within the 0.5-0.85 sanity band). Two real live loud sources (alice 300Hz PTT + bob host PTT 700Hz simultaneously) -> Goertzel m300=9669, m700=9849 (both truly in the mix), peak = 0.7003, 0 clipped. This is exactly the case that measured 1.045 in iteration_12 -> now PASS. (C) Regression re-verify (DOM/state): talk trim OK (2.2s press + 5s tail -> row label '2.2s . 23.7 KB', total 7214 vs talk 2212); clip notes OK (typed note saved on Enter, round-trips from IndexedDB); TTL badge OK ('47h left'); 48h retention OK (injected STALE_CLIP created_at -3d + FRESH_CLIP -1h; after reload only FRESH_CLIP + the real clip remained); multi-participant mixing works (bob's track attached to the composite). Console: 0 errors across all runs. No backend calls for clip save (client-only) - unchanged.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Room participant grid (user view)", "issues": ["Still open from iteration_12: the 'YOU' participant card stretches to ~530px tall with content only at the top-left/bottom-left corners - large empty red block. Cosmetic only."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": ["No blocking action items. Mix limiter target met (peak 0.62-0.91 for 1-6 loud sources, 0 clipped samples) - the dynamic 1/N per-source gain fallback is NOT needed.", "Optional/cosmetic: compact the participant card height.", "Optional (carried over): RoomPage.jsx ~1314 lines - extract ClipRow + clip recorder into components/hooks."],
+  "critical_code_review_comments": [
+    "Carried over from iteration_12 (unverified/unchanged): stopClipRecording still depends on roomMeta, so the unmount cleanup effect could disconnect a LIVE session if /room/info refetches - prefer a ref-based cleanup.",
+    "Late-joiner attach() keys on pub.trackSid || track.sid while the initial snapshot keys on pub.track.sid - use one consistent key to avoid double-attach/double-gain.",
+    "Loudness is now limited but average level dropped (RMS 0.43 -> 0.26 as sources increase). Acceptable, but if clips ever sound quiet with many speakers consider makeup gain after the limiter rather than raising master back up."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not in scope (no backend changes; login 200 for both accounts)", "frontend": "100% - all 6 synthetic limiter cases + 2 real clip cases + 4 regression features pass"},
+  "seed_data_creation": "IndexedDB 'talknet_ptt_clips' wiped before each run; synthetic STALE_CLIP/FRESH_CLIP records inserted for the purge check (browser-context only). No server-side data created.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "test_credentials": "alice.ops / Alice@12345 (user), bob.ops@example.com / Bob@12345 (room_admin)",
+  "context_for_next_testing_agent": "Preview URL https://realtime-voice-hub-6.preview.emergentagent.com (frontend/.env), room feb97dad-08c7-4de0-b28d-fabb4a85719d. Fast path: goto /login -> in-page fetch /api/auth/login -> localStorage 'tn_token' -> goto /room?id=<id> -> wait+click room-enter-button -> wait room-leave-button. Override getUserMedia with an oscillator MediaStreamDestination via add_init_script (set window.__TONE__ first so each context gets a distinct frequency). IMPORTANT: the host (bob) joins MUTED - his track is only published while he holds Space, so for a true 2-live-source mix have bob hold Space during alice's PTT (otherwise the clip contains only alice). Measure peak by reading the clip blob from IndexedDB and decoding with OfflineAudioContext; use Goertzel per frequency to confirm who is in the mix.",
+  "rca_of_the_issue": "iteration_12's 1.038-1.045 peaks came from a soft compressor (-18 dB threshold, 24 dB knee, 4:1) whose post-knee gain reduction was insufficient for summed coherent sources at master 0.9. The new true-limiter settings (-6 dB threshold, 6 dB knee, 20:1, 1 ms attack) plus master 0.75 cap the summed output well below full scale; measured peaks now 0.62-0.91 with zero samples at full scale even for 6 sources at amplitude 1.0."
+}

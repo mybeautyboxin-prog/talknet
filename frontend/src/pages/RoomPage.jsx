@@ -354,15 +354,16 @@ export default function RoomPage() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const dest = ctx.createMediaStreamDestination();
-      // Compressor tames peaks when 3+ people talk at once; master gain gives a little headroom.
+      // True-limiter chain: hard ratio (20:1) with headroom via master 0.75
+      // keeps decoded peak ≤1.0 even when 4+ loud sources overlap.
       const compressor = ctx.createDynamicsCompressor();
-      compressor.threshold.value = -18;
-      compressor.knee.value = 24;
-      compressor.ratio.value = 4;
-      compressor.attack.value = 0.003;
-      compressor.release.value = 0.25;
+      compressor.threshold.value = -6;
+      compressor.knee.value = 6;
+      compressor.ratio.value = 20;
+      compressor.attack.value = 0.001;
+      compressor.release.value = 0.15;
       const masterGain = ctx.createGain();
-      masterGain.gain.value = 0.9;
+      masterGain.gain.value = 0.75;
       compressor.connect(masterGain).connect(dest);
 
       clipCtxRef.current = ctx;
