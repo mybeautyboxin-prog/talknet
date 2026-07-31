@@ -78,7 +78,7 @@ function ClipRow({ clip, index, onDelete }) {
       >
         <Trash2 className="w-3.5 h-3.5" />
       </Button>
-      <audio ref={audioRef} src={url} preload="none" onEnded={() => setPlaying(false)} onPause={() => setPlaying(false)} className="hidden" />
+      <audio ref={audioRef} src={url || undefined} preload="none" onEnded={() => setPlaying(false)} onPause={() => setPlaying(false)} className="hidden" />
     </li>
   );
 }
@@ -418,7 +418,7 @@ export default function RoomPage() {
         try { await startClipRecording(); } catch (_) {}
       }
     }
-  }, [listenerOnly, isHost]);
+  }, [listenerOnly, isHost, startClipRecording]);
 
   const stopTalking = useCallback(async () => {
     if (continuousRef.current) return;
@@ -432,7 +432,7 @@ export default function RoomPage() {
         stopClipRecording().catch(() => {});
       }, 5000);
     }
-  }, [isHost]);
+  }, [isHost, stopClipRecording]);
 
   const setContinuousLocal = useCallback(async (next) => {
     continuousRef.current = next;
