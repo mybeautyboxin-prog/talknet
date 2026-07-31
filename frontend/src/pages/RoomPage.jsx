@@ -1205,19 +1205,70 @@ export default function RoomPage() {
             );
           };
 
+          // For the admin view we render the host as a very thin horizontal strip
+          // (avatar + name + host badge + quality + state), not a big card, so at least
+          // 6 user cards remain visible above the fold.
+          const renderHostStrip = (host) => {
+            const st = getCardState(host);
+            const q = getQuality(host.connectionQuality);
+            const initials = host.name.split(" ").slice(0, 2).map((s) => s[0]).join("").toUpperCase() || "?";
+            return (
+              <div
+                key={host.identity}
+                data-testid={`${TID.participantCardPrefix}${host.identity}`}
+                data-state={st.key}
+                data-quality={q.level}
+                className={`flex items-center gap-3 rounded-md border px-3 py-2 min-w-0 transition-colors duration-300 ${st.card}`}
+              >
+                <div className={`w-8 h-8 shrink-0 rounded-md font-bold flex items-center justify-center text-xs ${st.colored ? "bg-white/25 text-white" : "bg-[#F2F2F0] text-[#111]"}`}>
+                  {initials}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold leading-tight truncate">
+                    {host.name} {host.isLocal && <span className={`font-normal ${st.colored ? "text-white/70" : "text-[#666]"}`}>(you)</span>}
+                  </div>
+                  {host.email && (
+                    <div className={`text-[10px] font-mono truncate ${st.colored ? "text-white/70" : "text-[#666]"}`}>{host.email}</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span
+                    data-testid={`${TID.participantQualityPrefix}${host.identity}`}
+                    data-quality={q.level}
+                    title={`Network: ${q.label}`}
+                    className={`inline-flex items-center gap-1 text-[9px] tracking-widest uppercase rounded-sm px-1 py-0.5 border ${st.colored ? "border-white/50 text-white" : "border-[#E8E8E3] text-[#666]"}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${q.dot}`} aria-hidden="true" /> {q.label}
+                  </span>
+                  <span className={`text-[9px] tracking-widest uppercase rounded-sm px-1 py-0.5 border ${st.colored ? "border-white/50 text-white" : "border-[#3A4F41]/40 text-[#3A4F41]"}`}>Host</span>
+                  <span className={`inline-flex items-center gap-1 text-[10px] tracking-widest uppercase ${st.colored ? "text-white" : "text-[#666]"}`}>
+                    <st.Icon className="w-3 h-3" strokeWidth={st.label === "Speaking" ? 2 : 1.75} />
+                    <span className="hidden sm:inline">{st.label}</span>
+                  </span>
+                </div>
+              </div>
+            );
+          };
+
           return (
             <>
-              {/* Admin cards — pinned strip at the top, always visible. */}
+              {/* Host strip — thin single-row card so most of the viewport is free for members. */}
               <section data-testid={TID.roomAdminSection} className="shrink-0">
-                <div className="flex items-center gap-2 mb-1.5 text-[10px] tracking-widest uppercase text-[#666]">
+                <div className="flex items-center gap-2 mb-1 text-[10px] tracking-widest uppercase text-[#666]">
                   <Radio className="w-3 h-3" strokeWidth={2} />
                   <span>Room Host</span>
                 </div>
                 {admins.length === 0 ? (
-                  <div className="border border-dashed border-[#E8E8E3] rounded-md p-4 text-center text-sm text-[#666] italic bg-white">
+                  <div className="border border-dashed border-[#E8E8E3] rounded-md px-3 py-2 text-center text-xs text-[#666] italic bg-white">
                     Waiting for the room host to join…
                   </div>
+                ) : isHost ? (
+                  // Admin view — thin strip
+                  <div className="flex flex-col gap-1.5">
+                    {admins.map((a) => renderHostStrip(a))}
+                  </div>
                 ) : (
+                  // Non-admin viewer — keep the large host card that matches their focused 2-card layout.
                   <div
                     className="grid gap-2 sm:gap-3"
                     style={{ gridTemplateColumns: `repeat(${Math.min(admins.length, 3)}, minmax(0, 1fr))` }}
@@ -1227,12 +1278,13 @@ export default function RoomPage() {
                 )}
               </section>
 
-              {/* User cards — flexible area below. For non-admin viewer this is just themselves. */}
+              {/* User cards — flexible area below. Admin view is a scrollable 3-col grid with fixed-height rows
+                  so at least 6 members fit on-screen; the rest appear on scroll. */}
               <section
                 data-testid={TID.roomUserSection}
                 className="flex-1 min-h-0 flex flex-col overflow-hidden"
               >
-                <div className="flex items-center gap-2 mb-1.5 text-[10px] tracking-widest uppercase text-[#666] shrink-0">
+                <div className="flex items-center gap-2 mb-1 text-[10px] tracking-widest uppercase text-[#666] shrink-0">
                   <Users2 className="w-3 h-3" strokeWidth={2} />
                   <span>{isHost ? `Members (${visibleUsers.length})` : "You"}</span>
                 </div>
@@ -1240,7 +1292,20 @@ export default function RoomPage() {
                   <div className="flex-1 min-h-0 border border-dashed border-[#E8E8E3] rounded-md flex items-center justify-center text-sm text-[#666] italic bg-white">
                     {isHost ? "No members have joined yet." : "Waiting…"}
                   </div>
+                ) : isHost ? (
+                  <div
+                    className="flex-1 min-h-0 grid gap-2 sm:gap-3 overflow-y-auto pr-1"
+                    data-testid={TID.roomParticipantList}
+                    style={{
+                      gridTemplateColumns: `repeat(${userGridCols}, minmax(0, 1fr))`,
+                      gridAutoRows: "120px", // fixed row height → ~6 cards (2 rows × 3 cols) always visible
+                      alignContent: "start",
+                    }}
+                  >
+                    {orderedUsers.map((u) => renderCard(u, "normal"))}
+                  </div>
                 ) : (
+                  // Non-admin: preserve the previous auto-fit behavior so their focused 2-card layout stays untouched.
                   <div
                     className="flex-1 min-h-0 grid gap-2 sm:gap-3 overflow-hidden"
                     data-testid={TID.roomParticipantList}
@@ -1249,7 +1314,7 @@ export default function RoomPage() {
                       gridAutoRows: "minmax(0, 1fr)",
                     }}
                   >
-                    {orderedUsers.map((u) => renderCard(u, compact ? "compact" : "normal"))}
+                    {orderedUsers.map((u) => renderCard(u, "normal"))}
                   </div>
                 )}
               </section>
