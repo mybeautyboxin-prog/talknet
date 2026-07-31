@@ -10,17 +10,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TID } from "@/lib/testIds";
-import { listClips, addClip, deleteClip } from "@/lib/clipStore";
+import { listClips, addClip, deleteClip, updateClipNote, CLIP_TTL_MS } from "@/lib/clipStore";
 import { toast } from "sonner";
 
 /**
  * ClipRow — one row in the "My PTT clips" popover for regular users.
- * Play/pause via a lazily-created blob URL, download link, delete button.
+ * Play/pause via a lazily-created blob URL, download link, delete button,
+ * editable one-line note (persisted), TTL badge for the 48h retention window.
  */
-function ClipRow({ clip, index, onDelete }) {
+function ClipRow({ clip, index, onDelete, onNoteChange }) {
   const audioRef = useRef(null);
   const [url, setUrl] = useState("");
   const [playing, setPlaying] = useState(false);
+  const [note, setNote] = useState(clip.note || "");
 
   useEffect(() => {
     const u = URL.createObjectURL(clip.blob);
@@ -35,49 +37,86 @@ function ClipRow({ clip, index, onDelete }) {
     else { a.pause(); setPlaying(false); }
   };
 
-  const secs = (clip.duration_ms / 1000).toFixed(1);
+  const saveNote = () => {
+    const trimmed = note.slice(0, 200);
+    if (trimmed !== (clip.note || "")) onNoteChange(clip.id, trimmed);
+  };
+
+  // Prefer talk-only duration (excludes the 5s grace tail); fall back to total for legacy clips.
+  const durMs = typeof clip.talk_duration_ms === "number" ? clip.talk_duration_ms : clip.duration_ms;
+  const secs = (durMs / 1000).toFixed(1);
   const kb = (clip.size / 1024).toFixed(1);
   const when = new Date(clip.created_at);
-  const filename = `talknet-clip-${when.toISOString().replace(/[:.]/g, "-")}.${clip.mime_type.includes("webm") ? "webm" : "ogg"}`;
+  const filename = `talknet-clip-${when.toISOString().replace(/[:.]/g, "-")}.${(clip.mime_type || "").includes("webm") ? "webm" : "ogg"}`;
+
+  // 48h retention — show "expires in Nh" badge so users know when it will auto-delete.
+  const expiresAt = when.getTime() + CLIP_TTL_MS;
+  const msLeft = Math.max(0, expiresAt - Date.now());
+  const hoursLeft = Math.floor(msLeft / 3_600_000);
+  const minsLeft = Math.floor((msLeft % 3_600_000) / 60_000);
+  const ttlLabel = hoursLeft >= 1 ? `${hoursLeft}h left` : `${minsLeft}m left`;
+  const ttlUrgent = hoursLeft < 6;
 
   return (
-    <li data-testid={`${TID.myClipsRowPrefix}${index}`} className="flex items-center gap-2 px-4 py-2.5">
-      <Button
-        data-testid={`${TID.myClipsPlayPrefix}${index}`}
-        variant="outline"
-        size="sm"
-        onClick={toggle}
-        className="h-8 w-8 p-0 shrink-0 rounded-full border-[#E8E8E3]"
-        title={playing ? "Pause" : "Play"}
-      >
-        {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-      </Button>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs font-semibold text-[#111] truncate">
-          {when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-          <span className="ml-2 text-[10px] font-mono text-[#666] tracking-widest uppercase">{secs}s · {kb} KB</span>
+    <li data-testid={`${TID.myClipsRowPrefix}${index}`} className="px-4 py-2.5 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Button
+          data-testid={`${TID.myClipsPlayPrefix}${index}`}
+          variant="outline"
+          size="sm"
+          onClick={toggle}
+          className="h-8 w-8 p-0 shrink-0 rounded-full border-[#E8E8E3]"
+          title={playing ? "Pause" : "Play"}
+        >
+          {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+        </Button>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-semibold text-[#111] truncate">
+            {when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            <span className="ml-2 text-[10px] font-mono text-[#666] tracking-widest uppercase">{secs}s · {kb} KB</span>
+          </div>
+          <div className="text-[10px] font-mono text-[#666] truncate flex items-center gap-1.5">
+            <span>{when.toLocaleDateString()}</span>
+            <span
+              data-testid={`${TID.myClipsTtlPrefix}${index}`}
+              className={`px-1 py-0.5 rounded-sm border ${ttlUrgent ? "border-[#C84C4C]/50 text-[#C84C4C]" : "border-[#E8E8E3] text-[#666]"} tracking-widest uppercase`}
+              title="Auto-deleted 48h after recording"
+            >
+              {ttlLabel}
+            </span>
+          </div>
         </div>
-        <div className="text-[10px] font-mono text-[#666] truncate">{when.toLocaleDateString()}</div>
+        <a
+          data-testid={`${TID.myClipsDownloadPrefix}${index}`}
+          href={url}
+          download={filename}
+          className="h-8 w-8 shrink-0 rounded-md border border-[#E8E8E3] flex items-center justify-center hover:bg-[#F2F2F0] text-[#666]"
+          title="Download"
+        >
+          <Download className="w-3.5 h-3.5" />
+        </a>
+        <Button
+          data-testid={`${TID.myClipsDeletePrefix}${index}`}
+          variant="outline"
+          size="sm"
+          onClick={onDelete}
+          className="h-8 w-8 p-0 shrink-0 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]"
+          title="Delete"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
       </div>
-      <a
-        data-testid={`${TID.myClipsDownloadPrefix}${index}`}
-        href={url}
-        download={filename}
-        className="h-8 w-8 shrink-0 rounded-md border border-[#E8E8E3] flex items-center justify-center hover:bg-[#F2F2F0] text-[#666]"
-        title="Download"
-      >
-        <Download className="w-3.5 h-3.5" />
-      </a>
-      <Button
-        data-testid={`${TID.myClipsDeletePrefix}${index}`}
-        variant="outline"
-        size="sm"
-        onClick={onDelete}
-        className="h-8 w-8 p-0 shrink-0 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]"
-        title="Delete"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </Button>
+      <input
+        data-testid={`${TID.myClipsNotePrefix}${index}`}
+        type="text"
+        maxLength={200}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        onBlur={saveNote}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+        placeholder="Add a note…"
+        className="w-full text-[11px] bg-[#F7F7F4] border border-[#E8E8E3] rounded-sm px-2 py-1 focus:outline-none focus:border-[#3A4F41] placeholder:text-[#999]"
+      />
       <audio ref={audioRef} src={url || undefined} preload="none" onEnded={() => setPlaying(false)} onPause={() => setPlaying(false)} className="hidden" />
     </li>
   );
@@ -132,9 +171,13 @@ export default function RoomPage() {
   const clipChunksRef = useRef([]);
   const clipCtxRef = useRef(null);
   const clipDestRef = useRef(null);
-  const clipSourcesRef = useRef(new Map());
+  const clipCompressorRef = useRef(null);
+  const clipMasterGainRef = useRef(null);
+  const clipSourcesRef = useRef(new Map()); // key → { src, gain }
   const clipStopTimerRef = useRef(null);
   const clipStartAtRef = useRef(0);
+  const clipTalkStopAtRef = useRef(0); // last time PTT was released (talk duration = stop - start)
+  const clipListenersRef = useRef(null); // { onTrackSubscribed, onTrackUnsubscribed }
   const [clips, setClips] = useState([]);
   const [clipsOpen, setClipsOpen] = useState(false);
   const [isClipRecording, setIsClipRecording] = useState(false);
@@ -311,33 +354,65 @@ export default function RoomPage() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const dest = ctx.createMediaStreamDestination();
+      // Compressor tames peaks when 3+ people talk at once; master gain gives a little headroom.
+      const compressor = ctx.createDynamicsCompressor();
+      compressor.threshold.value = -18;
+      compressor.knee.value = 24;
+      compressor.ratio.value = 4;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+      const masterGain = ctx.createGain();
+      masterGain.gain.value = 0.9;
+      compressor.connect(masterGain).connect(dest);
+
       clipCtxRef.current = ctx;
       clipDestRef.current = dest;
+      clipCompressorRef.current = compressor;
+      clipMasterGainRef.current = masterGain;
       clipSourcesRef.current = new Map();
+
+      // Helper — attach one publication to the mix with its own gain stage.
+      const attach = (key, mediaStreamTrack) => {
+        if (!mediaStreamTrack || clipSourcesRef.current.has(key)) return;
+        try {
+          const stream = new MediaStream([mediaStreamTrack]);
+          const src = ctx.createMediaStreamSource(stream);
+          const gain = ctx.createGain();
+          gain.gain.value = 0.85; // per-source headroom
+          src.connect(gain).connect(compressor);
+          clipSourcesRef.current.set(key, { src, gain });
+        } catch (_) {}
+      };
 
       // Local mic
       const localPub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
-      if (localPub?.track?.mediaStreamTrack) {
-        try {
-          const s = new MediaStream([localPub.track.mediaStreamTrack]);
-          const src = ctx.createMediaStreamSource(s);
-          src.connect(dest);
-          clipSourcesRef.current.set("__local__", src);
-        } catch (_) {}
-      }
-      // All remote audio tracks
+      if (localPub?.track?.mediaStreamTrack) attach("__local__", localPub.track.mediaStreamTrack);
+      // All currently-subscribed remote audio tracks
       room.remoteParticipants.forEach((p) => {
         p.trackPublications.forEach((pub) => {
-          if (pub.track && pub.kind === Track.Kind.Audio) {
-            try {
-              const s = new MediaStream([pub.track.mediaStreamTrack]);
-              const src = ctx.createMediaStreamSource(s);
-              src.connect(dest);
-              clipSourcesRef.current.set(pub.track.sid, src);
-            } catch (_) {}
+          if (pub.track && pub.kind === Track.Kind.Audio && pub.track.mediaStreamTrack) {
+            attach(pub.track.sid, pub.track.mediaStreamTrack);
           }
         });
       });
+
+      // Late-joiners: whenever someone new subscribes during recording, splice them in.
+      const onTrackSubscribed = (track, pub) => {
+        if (!clipRecorderRef.current) return;
+        if (track.kind !== Track.Kind.Audio || !track.mediaStreamTrack) return;
+        attach(pub.trackSid || track.sid, track.mediaStreamTrack);
+      };
+      const onTrackUnsubscribed = (track, pub) => {
+        const key = pub?.trackSid || track?.sid;
+        if (!key) return;
+        const entry = clipSourcesRef.current.get(key);
+        if (!entry) return;
+        try { entry.src.disconnect(); entry.gain.disconnect(); } catch (_) {}
+        clipSourcesRef.current.delete(key);
+      };
+      room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
+      room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
+      clipListenersRef.current = { onTrackSubscribed, onTrackUnsubscribed };
 
       let mimeType = "audio/webm;codecs=opus";
       if (!window.MediaRecorder || !MediaRecorder.isTypeSupported(mimeType)) mimeType = "audio/webm";
@@ -348,43 +423,63 @@ export default function RoomPage() {
       rec.start(1000);
       clipRecorderRef.current = rec;
       clipStartAtRef.current = Date.now();
+      clipTalkStopAtRef.current = 0;
       setIsClipRecording(true);
     } catch (e) {
       try { clipCtxRef.current?.close(); } catch (_) {}
       clipCtxRef.current = null; clipDestRef.current = null;
+      clipCompressorRef.current = null; clipMasterGainRef.current = null;
     }
   }, [isHost]);
 
   const stopClipRecording = useCallback(async () => {
     const rec = clipRecorderRef.current;
     if (!rec) return;
+    const room = roomRef.current;
+    // Unhook the late-joiner listeners so we don't try to connect nodes to a closed context.
+    if (room && clipListenersRef.current) {
+      try {
+        room.off(RoomEvent.TrackSubscribed, clipListenersRef.current.onTrackSubscribed);
+        room.off(RoomEvent.TrackUnsubscribed, clipListenersRef.current.onTrackUnsubscribed);
+      } catch (_) {}
+      clipListenersRef.current = null;
+    }
     return new Promise((resolve) => {
       rec.onstop = async () => {
         try {
           const mimeType = rec.mimeType || "audio/webm";
           const blob = new Blob(clipChunksRef.current, { type: mimeType });
-          for (const src of clipSourcesRef.current.values()) { try { src.disconnect(); } catch (_) {} }
+          for (const entry of clipSourcesRef.current.values()) {
+            try { entry.src.disconnect(); entry.gain.disconnect(); } catch (_) {}
+          }
           clipSourcesRef.current.clear();
+          try { clipCompressorRef.current?.disconnect(); } catch (_) {}
+          try { clipMasterGainRef.current?.disconnect(); } catch (_) {}
           try { clipCtxRef.current?.close(); } catch (_) {}
           clipCtxRef.current = null; clipDestRef.current = null;
+          clipCompressorRef.current = null; clipMasterGainRef.current = null;
           clipRecorderRef.current = null;
           clipChunksRef.current = [];
           setIsClipRecording(false);
           if (blob.size < 800) { resolve(); return; }
+          const now = Date.now();
+          const talkStop = clipTalkStopAtRef.current || now;
           const clip = {
             id: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`),
             room_id: roomId,
             room_name: roomMeta?.name || "",
-            created_at: new Date().toISOString(),
-            duration_ms: Math.max(0, Date.now() - clipStartAtRef.current),
+            created_at: new Date(clipStartAtRef.current || now).toISOString(),
+            duration_ms: Math.max(0, now - clipStartAtRef.current),
+            talk_duration_ms: Math.max(0, talkStop - clipStartAtRef.current),
             size: blob.size,
             mime_type: mimeType,
+            note: "",
             blob,
           };
           try {
             await addClip(clip);
             setClips((prev) => [clip, ...prev]);
-            toast.success(`Clip saved · ${(clip.duration_ms / 1000).toFixed(1)}s`);
+            toast.success(`Clip saved · ${(clip.talk_duration_ms / 1000).toFixed(1)}s`);
           } catch (e) { /* silent — recording is best-effort */ }
         } finally { resolve(); }
       };
@@ -403,6 +498,13 @@ export default function RoomPage() {
     catch { toast.error("Could not delete clip"); }
   }, []);
 
+  const handleNoteChange = useCallback(async (id, note) => {
+    try {
+      await updateClipNote(id, note);
+      setClips((prev) => prev.map((c) => (c.id === id ? { ...c, note } : c)));
+    } catch { /* silent */ }
+  }, []);
+
   const startTalking = useCallback(async () => {
     if (continuousRef.current) return;
     if (talkingRef.current) return;
@@ -414,6 +516,7 @@ export default function RoomPage() {
     // ─── User-side clip recorder: start on press, or extend if within the 5s grace window
     if (!isHost) {
       if (clipStopTimerRef.current) { clearTimeout(clipStopTimerRef.current); clipStopTimerRef.current = null; }
+      clipTalkStopAtRef.current = 0; // reset — we're talking again
       if (!clipRecorderRef.current) {
         try { await startClipRecording(); } catch (_) {}
       }
@@ -427,6 +530,7 @@ export default function RoomPage() {
     const t = micTrackRef.current; if (t) { try { await t.mute(); } catch (_) {} }
     // ─── User-side clip recorder: stop 5s after release (extendable)
     if (!isHost && clipRecorderRef.current && !clipStopTimerRef.current) {
+      clipTalkStopAtRef.current = Date.now(); // mark last release for talk-duration
       clipStopTimerRef.current = setTimeout(() => {
         clipStopTimerRef.current = null;
         stopClipRecording().catch(() => {});
@@ -878,7 +982,7 @@ export default function RoomPage() {
                   <div className="px-4 py-3 border-b border-[#E8E8E3] flex items-center gap-2">
                     <FileAudio2 className="w-4 h-4 text-[#3A4F41]" strokeWidth={1.75} />
                     <div className="text-[11px] tracking-widest uppercase text-[#666]">Your PTT clips</div>
-                    <div className="ml-auto text-[10px] tracking-widest uppercase text-[#666]">{clips.length} saved</div>
+                    <div className="ml-auto text-[10px] tracking-widest uppercase text-[#666]">Kept 48h · {clips.length} saved</div>
                   </div>
                   {clips.length === 0 ? (
                     <div className="p-6 text-center text-sm text-[#666] italic">
@@ -892,6 +996,7 @@ export default function RoomPage() {
                           clip={clip}
                           index={i}
                           onDelete={() => handleDeleteClip(clip.id)}
+                          onNoteChange={handleNoteChange}
                         />
                       ))}
                     </ol>

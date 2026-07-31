@@ -109,6 +109,8 @@ export const TID = {
   myClipsPlayPrefix: "my-clips-play-",
   myClipsDownloadPrefix: "my-clips-download-",
   myClipsDeletePrefix: "my-clips-delete-",
+  myClipsNotePrefix: "my-clips-note-",
+  myClipsTtlPrefix: "my-clips-ttl-",
 
   // Admin recordings list
   adminRecordingsSection: "admin-recordings-section",
