@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend-only E2E verification of the NEW user-side PTT auto-clip feature (IndexedDB, client-only) plus admin regression. Used the preview URL with a synthetic oscillator getUserMedia override (test-side only) so MediaRecorder captured real audio. ALL 13 requested test items PASSED: (1) 'my-clips-trigger' present for alice (user), count 0 for admin bob — admin view unchanged. (2) Empty state text 'No clips yet ... Press Space' shown in my-clips-panel; count badge absent at 0. (3) Auto-record on PTT: red animate-pulse dot appears on trigger while Space held; after release + ~7s wait exactly 1 clip appeared (my-clips-row-0, badge '1', 22.6 KB / 7.1s, toast 'Clip saved'). (4) 5s delayed stop / extend-on-repress: press(1.5s)-release-wait 3s-press(1.5s)-release-wait 7s => exactly 1 clip (11.0s, 36.3 KB), not two. (5) Multiple clips: second burst => rows=2, badge='2', newest first (row0 05:48:39 > row1 05:48:30) confirmed both in DOM and in IndexedDB records. (6) Play/Pause: my-clips-play-0 started the row <audio> (paused=false, currentTime advancing, blob: src), title toggled Play->Pause->Play on second click (pause verified). (7) Download: page.on download intercepted; suggested_filename 'talknet-clip-2026-07-31T17-48-39-683Z.webm', size 18921 bytes (== IDB clip size). (8) Delete: row removed, badge decremented 2->1; persisted after page.reload() (deleted clip did not return). (9) Persistence: clips survive reload, stored in db 'talknet_ptt_clips'/store 'clips' filtered by room_id feb97dad-08c7-4de0-b28d-fabb4a85719d; records carry {created_at,size,duration_ms,mime_type audio/webm;codecs=opus,blob:Blob,room_id}. (10) Admin regression: bob has NO my-clips-trigger (count 0), Record toggle start/stop still POSTs /api/admin/recordings (200) and GET /api/admin/recordings returns 1 admin recording; admin Open Mic toggle and admin Space PTT created ZERO clips (IndexedDB clip count 0). (11) PTT audio unchanged: Space unmutes (card turns green/'Speaking', PTT button 'TALKING…'), LiveKit publish/subscribe unaffected. (12) Leave mid-recording: released Space then clicked Leave 0.8s later (inside grace window) -> pending timer cancelled and clip flushed/saved (IDB count 1, 26014 bytes); re-entering shows the clip, no stuck recorder (subsequent burst produced a 2nd clip normally). (13) No backend changes exercised by clips — no /api calls fired for clip save. Extra: 2-party test (bob open-mic 700Hz + alice PTT 300Hz) produced a 64.6 KB / 8.0s clip that decodes to non-silent audio (rms 0.71), confirming the composite 2-way graph mixes local mic + remote audio.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ClipRow <audio>", "issue": "React console warning on every clip render: 'An empty string (\"\") was passed to the src attribute...' because <audio src={url}> renders before the blob URL effect sets state. Use src={url || undefined} or render the audio only when url is set.", "selector": "[data-testid^=\"my-clips-row-\"] audio", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Composite 2-way mix", "issue": "Remote audio tracks are snapshotted only at recording START (startClipRecording iterates room.remoteParticipants once). A participant who joins/subscribes mid-clip is never added to the mix, so their audio is missing from that clip. Consider wiring TrackSubscribed/TrackUnsubscribed while a clip recorder is active.", "affected_selectors": ["[data-testid=\"my-clips-trigger\"]"]},
+      {"flow": "Composite 2-way mix gain", "issue": "Sources are summed straight into the MediaStreamDestination with no gain staging/limiter. Decoded 2-source clip peaked at 1.26 (>1.0) i.e. clipping/distortion; with 3+ speakers this worsens. Add per-source GainNode (~1/N) or a DynamicsCompressor.", "affected_selectors": []}
+    ],
+    "design_issues": [
+      {"screen": "My clips panel", "issues": ["Displayed clip duration includes the 5s trailing grace period (a 2s utterance is labelled 7.1s), which may read as wrong to users — consider showing talk duration or trimming the tail.", "Panel is otherwise clean: good contrast, count badge readable, empty state clear."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix the empty-string src React warning in ClipRow (src={url || undefined}).",
+    "Add remote TrackSubscribed handling while a clip is recording so late-joining participants are captured.",
+    "Add gain staging / limiter to the composite mix (2-source clip already peaks at 1.26 => clipping).",
+    "Add startClipRecording/stopClipRecording to the startTalking/stopTalking useCallback dependency arrays (see code review)."
+  ],
+  "critical_code_review_comments": [
+    "RoomPage.jsx is now 1209 lines (>700 guideline). ClipRow + the clip recorder logic should move to components/ClipRow.jsx and hooks/usePttClipRecorder.js.",
+    "startTalking (deps [listenerOnly, isHost]) and stopTalking (deps [isHost]) call startClipRecording/stopClipRecording without listing them as deps — stale closures. stopClipRecording captures roomMeta, so the version captured by stopTalking may persist roomMeta=null => clip.room_name empty. Harmless today, fragile.",
+    "The unmount cleanup `useEffect(() => () => { disconnect(); }, [disconnect])` now transitively depends on roomMeta (via stopClipRecording). roomMeta is fetched once today, but any future refetch/poll of /room/info would re-run the cleanup and silently disconnect a LIVE session. Use a ref-based cleanup instead.",
+    "clipStopTimerRef timer is only cleared in stopTalking/disconnect; there is no unmount clearTimeout for the 5s timer independent of disconnect() — currently covered by disconnect, but worth an explicit cleanup.",
+    "Clips grow unbounded in IndexedDB (no cap/quota handling); addClip failure is swallowed silently, so a QuotaExceededError would drop clips with no user feedback."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not in scope (admin recordings POST/GET verified 200)", "frontend": "100% of the 13 requested clip/regression assertions passed"},
+  "seed_data_creation": "None. IndexedDB 'talknet_ptt_clips' was wiped between runs; one admin session recording was created via the Record toggle and left in place (GET /api/admin/recordings count=1).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Preview URL https://realtime-voice-hub-6.preview.emergentagent.com, room feb97dad-08c7-4de0-b28d-fabb4a85719d. Fast path: in-page fetch /api/auth/login -> localStorage 'tn_token' -> goto /room?id=<id> -> wait for room-enter-button, wait 1s, click, wait for room-leave-button (the enter click occasionally no-ops on first try; retry loop needed). Override navigator.mediaDevices.getUserMedia with an oscillator MediaStreamDestination (init script) so MediaRecorder gets >800 bytes. Clip flow timing: hold Space >=1.5s, release, wait >=6.5s for the 5s stop timer + save. IndexedDB can be read/wiped with page.evaluate; clips persist across page.reload() in the same context but NOT across separate tool runs (fresh context).",
+  "rca_of_the_issue": "No functional defect found in the new feature; all reported items are quality/robustness improvements (audio src warning, late-joiner mix gap, mix clipping, hook dependency hygiene)."
+}

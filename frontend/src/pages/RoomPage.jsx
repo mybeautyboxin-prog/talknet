@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Room, RoomEvent, Track, ConnectionState } from "livekit-client";
-import { Mic, MicOff, PhoneOff, Radio, Volume2, VolumeX, UserX, Loader2, Zap, Settings, CircleDot, Square, Users2 } from "lucide-react";
+import { Mic, MicOff, PhoneOff, Radio, Volume2, VolumeX, UserX, Loader2, Zap, Settings, CircleDot, Square, Users2, Play, Pause, Download, Trash2, FileAudio2 } from "lucide-react";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,79 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { TID } from "@/lib/testIds";
+import { listClips, addClip, deleteClip } from "@/lib/clipStore";
 import { toast } from "sonner";
+
+/**
+ * ClipRow — one row in the "My PTT clips" popover for regular users.
+ * Play/pause via a lazily-created blob URL, download link, delete button.
+ */
+function ClipRow({ clip, index, onDelete }) {
+  const audioRef = useRef(null);
+  const [url, setUrl] = useState("");
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const u = URL.createObjectURL(clip.blob);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [clip.blob]);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) { a.play().then(() => setPlaying(true)).catch(() => {}); }
+    else { a.pause(); setPlaying(false); }
+  };
+
+  const secs = (clip.duration_ms / 1000).toFixed(1);
+  const kb = (clip.size / 1024).toFixed(1);
+  const when = new Date(clip.created_at);
+  const filename = `talknet-clip-${when.toISOString().replace(/[:.]/g, "-")}.${clip.mime_type.includes("webm") ? "webm" : "ogg"}`;
+
+  return (
+    <li data-testid={`${TID.myClipsRowPrefix}${index}`} className="flex items-center gap-2 px-4 py-2.5">
+      <Button
+        data-testid={`${TID.myClipsPlayPrefix}${index}`}
+        variant="outline"
+        size="sm"
+        onClick={toggle}
+        className="h-8 w-8 p-0 shrink-0 rounded-full border-[#E8E8E3]"
+        title={playing ? "Pause" : "Play"}
+      >
+        {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+      </Button>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs font-semibold text-[#111] truncate">
+          {when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          <span className="ml-2 text-[10px] font-mono text-[#666] tracking-widest uppercase">{secs}s · {kb} KB</span>
+        </div>
+        <div className="text-[10px] font-mono text-[#666] truncate">{when.toLocaleDateString()}</div>
+      </div>
+      <a
+        data-testid={`${TID.myClipsDownloadPrefix}${index}`}
+        href={url}
+        download={filename}
+        className="h-8 w-8 shrink-0 rounded-md border border-[#E8E8E3] flex items-center justify-center hover:bg-[#F2F2F0] text-[#666]"
+        title="Download"
+      >
+        <Download className="w-3.5 h-3.5" />
+      </a>
+      <Button
+        data-testid={`${TID.myClipsDeletePrefix}${index}`}
+        variant="outline"
+        size="sm"
+        onClick={onDelete}
+        className="h-8 w-8 p-0 shrink-0 rounded-md border-[#E8E8E3] hover:bg-[#FBEDED] hover:text-[#C84C4C] hover:border-[#C84C4C]"
+        title="Delete"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </Button>
+      <audio ref={audioRef} src={url} preload="none" onEnded={() => setPlaying(false)} onPause={() => setPlaying(false)} className="hidden" />
+    </li>
+  );
+}
+
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -55,6 +127,17 @@ export default function RoomPage() {
   const roomRef = useRef(null);
   const micTrackRef = useRef(null);
   const talkingRef = useRef(false);
+  // ─── User-side per-PTT clip recorder (client-only, IndexedDB) ───
+  const clipRecorderRef = useRef(null);
+  const clipChunksRef = useRef([]);
+  const clipCtxRef = useRef(null);
+  const clipDestRef = useRef(null);
+  const clipSourcesRef = useRef(new Map());
+  const clipStopTimerRef = useRef(null);
+  const clipStartAtRef = useRef(0);
+  const [clips, setClips] = useState([]);
+  const [clipsOpen, setClipsOpen] = useState(false);
+  const [isClipRecording, setIsClipRecording] = useState(false);
   const continuousRef = useRef(false);
   const sessionIdRef = useRef(null);
   const audioContainerRef = useRef(null);
@@ -216,6 +299,110 @@ export default function RoomPage() {
   }, []);
 
   // ---------- Mic control ----------
+  // ═══════════════════════════════════════════════════════════════════
+  // USER-SIDE CLIP RECORDER — captures composite (local mic + all remote)
+  // on every PTT press. Stops 5s after release. Stored in IndexedDB only.
+  // ═══════════════════════════════════════════════════════════════════
+  const startClipRecording = useCallback(async () => {
+    if (isHost) return;
+    if (clipRecorderRef.current) return;
+    const room = roomRef.current;
+    if (!room) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = ctx.createMediaStreamDestination();
+      clipCtxRef.current = ctx;
+      clipDestRef.current = dest;
+      clipSourcesRef.current = new Map();
+
+      // Local mic
+      const localPub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+      if (localPub?.track?.mediaStreamTrack) {
+        try {
+          const s = new MediaStream([localPub.track.mediaStreamTrack]);
+          const src = ctx.createMediaStreamSource(s);
+          src.connect(dest);
+          clipSourcesRef.current.set("__local__", src);
+        } catch (_) {}
+      }
+      // All remote audio tracks
+      room.remoteParticipants.forEach((p) => {
+        p.trackPublications.forEach((pub) => {
+          if (pub.track && pub.kind === Track.Kind.Audio) {
+            try {
+              const s = new MediaStream([pub.track.mediaStreamTrack]);
+              const src = ctx.createMediaStreamSource(s);
+              src.connect(dest);
+              clipSourcesRef.current.set(pub.track.sid, src);
+            } catch (_) {}
+          }
+        });
+      });
+
+      let mimeType = "audio/webm;codecs=opus";
+      if (!window.MediaRecorder || !MediaRecorder.isTypeSupported(mimeType)) mimeType = "audio/webm";
+      if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "";
+      const rec = new MediaRecorder(dest.stream, mimeType ? { mimeType, audioBitsPerSecond: 64000 } : undefined);
+      clipChunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) clipChunksRef.current.push(e.data); };
+      rec.start(1000);
+      clipRecorderRef.current = rec;
+      clipStartAtRef.current = Date.now();
+      setIsClipRecording(true);
+    } catch (e) {
+      try { clipCtxRef.current?.close(); } catch (_) {}
+      clipCtxRef.current = null; clipDestRef.current = null;
+    }
+  }, [isHost]);
+
+  const stopClipRecording = useCallback(async () => {
+    const rec = clipRecorderRef.current;
+    if (!rec) return;
+    return new Promise((resolve) => {
+      rec.onstop = async () => {
+        try {
+          const mimeType = rec.mimeType || "audio/webm";
+          const blob = new Blob(clipChunksRef.current, { type: mimeType });
+          for (const src of clipSourcesRef.current.values()) { try { src.disconnect(); } catch (_) {} }
+          clipSourcesRef.current.clear();
+          try { clipCtxRef.current?.close(); } catch (_) {}
+          clipCtxRef.current = null; clipDestRef.current = null;
+          clipRecorderRef.current = null;
+          clipChunksRef.current = [];
+          setIsClipRecording(false);
+          if (blob.size < 800) { resolve(); return; }
+          const clip = {
+            id: (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`),
+            room_id: roomId,
+            room_name: roomMeta?.name || "",
+            created_at: new Date().toISOString(),
+            duration_ms: Math.max(0, Date.now() - clipStartAtRef.current),
+            size: blob.size,
+            mime_type: mimeType,
+            blob,
+          };
+          try {
+            await addClip(clip);
+            setClips((prev) => [clip, ...prev]);
+            toast.success(`Clip saved · ${(clip.duration_ms / 1000).toFixed(1)}s`);
+          } catch (e) { /* silent — recording is best-effort */ }
+        } finally { resolve(); }
+      };
+      try { rec.stop(); } catch (_) { resolve(); }
+    });
+  }, [roomId, roomMeta]);
+
+  // Load existing clips on mount (users only).
+  useEffect(() => {
+    if (isHost) return;
+    listClips(roomId).then(setClips).catch(() => {});
+  }, [isHost, roomId]);
+
+  const handleDeleteClip = useCallback(async (id) => {
+    try { await deleteClip(id); setClips((prev) => prev.filter((c) => c.id !== id)); toast.success("Clip deleted"); }
+    catch { toast.error("Could not delete clip"); }
+  }, []);
+
   const startTalking = useCallback(async () => {
     if (continuousRef.current) return;
     if (talkingRef.current) return;
@@ -224,15 +411,28 @@ export default function RoomPage() {
     const t = micTrackRef.current; if (!t) return;
     talkingRef.current = true; setIsTalking(true);
     try { await t.unmute(); } catch (_) {}
-  }, [listenerOnly]);
+    // ─── User-side clip recorder: start on press, or extend if within the 5s grace window
+    if (!isHost) {
+      if (clipStopTimerRef.current) { clearTimeout(clipStopTimerRef.current); clipStopTimerRef.current = null; }
+      if (!clipRecorderRef.current) {
+        try { await startClipRecording(); } catch (_) {}
+      }
+    }
+  }, [listenerOnly, isHost]);
 
   const stopTalking = useCallback(async () => {
     if (continuousRef.current) return;
     if (!talkingRef.current) return;
     talkingRef.current = false; setIsTalking(false);
-    const t = micTrackRef.current; if (!t) return;
-    try { await t.mute(); } catch (_) {}
-  }, []);
+    const t = micTrackRef.current; if (t) { try { await t.mute(); } catch (_) {} }
+    // ─── User-side clip recorder: stop 5s after release (extendable)
+    if (!isHost && clipRecorderRef.current && !clipStopTimerRef.current) {
+      clipStopTimerRef.current = setTimeout(() => {
+        clipStopTimerRef.current = null;
+        stopClipRecording().catch(() => {});
+      }, 5000);
+    }
+  }, [isHost]);
 
   const setContinuousLocal = useCallback(async (next) => {
     continuousRef.current = next;
@@ -489,6 +689,9 @@ export default function RoomPage() {
 
   const disconnect = useCallback(async () => {
     if (recorderRef.current) { try { await stopRecording(); } catch (_) {} }
+    // Cancel any pending clip stop and flush current clip if any
+    if (clipStopTimerRef.current) { clearTimeout(clipStopTimerRef.current); clipStopTimerRef.current = null; }
+    if (clipRecorderRef.current) { try { await stopClipRecording(); } catch (_) {} }
     if (sessionIdRef.current) {
       try { await api.post("/room/session/end", { session_id: sessionIdRef.current }); } catch (_) {}
       sessionIdRef.current = null;
@@ -503,7 +706,7 @@ export default function RoomPage() {
     setHostBroadcasting(false); setGrantedByHost(false);
     setGrantedMicSet(new Set());
     setState("idle"); setParticipants([]);
-  }, [stopRecording]);
+  }, [stopRecording, stopClipRecording]);
 
   // Spacebar PTT (users only, admin uses toggle)
   useEffect(() => {
@@ -657,6 +860,45 @@ export default function RoomPage() {
                 </div>
               </PopoverContent>
             </Popover>
+            {!isHost && (
+              <Popover open={clipsOpen} onOpenChange={setClipsOpen}>
+                <PopoverTrigger asChild>
+                  <Button data-testid={TID.myClipsTrigger} variant="outline" className="rounded-md border-[#E8E8E3] h-9 relative">
+                    <FileAudio2 className="w-4 h-4 mr-1.5" strokeWidth={1.75} />
+                    <span className="text-[11px] tracking-widest uppercase">My clips</span>
+                    {clips.length > 0 && (
+                      <span data-testid={TID.myClipsCount} className="ml-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#3A4F41] text-white text-[10px] font-bold inline-flex items-center justify-center">{clips.length}</span>
+                    )}
+                    {isClipRecording && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#C84C4C] animate-pulse" title="Recording…" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[22rem] p-0 bg-white border-[#E8E8E3] rounded-md" data-testid={TID.myClipsPanel}>
+                  <div className="px-4 py-3 border-b border-[#E8E8E3] flex items-center gap-2">
+                    <FileAudio2 className="w-4 h-4 text-[#3A4F41]" strokeWidth={1.75} />
+                    <div className="text-[11px] tracking-widest uppercase text-[#666]">Your PTT clips</div>
+                    <div className="ml-auto text-[10px] tracking-widest uppercase text-[#666]">{clips.length} saved</div>
+                  </div>
+                  {clips.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-[#666] italic">
+                      No clips yet. Press <kbd className="font-mono bg-[#F2F2F0] border border-[#E8E8E3] rounded px-1.5 py-0.5 text-xs">Space</kbd> to talk — a clip is auto-recorded on every press.
+                    </div>
+                  ) : (
+                    <ol className="max-h-[24rem] overflow-y-auto divide-y divide-[#E8E8E3]">
+                      {clips.map((clip, i) => (
+                        <ClipRow
+                          key={clip.id}
+                          clip={clip}
+                          index={i}
+                          onDelete={() => handleDeleteClip(clip.id)}
+                        />
+                      ))}
+                    </ol>
+                  )}
+                </PopoverContent>
+              </Popover>
+            )}
             <Button data-testid={TID.roomLeave} variant="outline" onClick={disconnect} className="rounded-md border-[#C84C4C]/40 text-[#C84C4C] hover:bg-[#FBEDED] h-9">
               <PhoneOff className="w-4 h-4 mr-1.5" /> Leave
             </Button>

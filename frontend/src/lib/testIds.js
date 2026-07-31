@@ -101,6 +101,14 @@ export const TID = {
   recentSpeakerItemPrefix: "recent-speaker-item-", // legacy
   hostLiveStrip: "host-live-strip",
   participantRankPrefix: "participant-rank-",
+  // ─── User-side PTT clips ───
+  myClipsTrigger: "my-clips-trigger",
+  myClipsCount: "my-clips-count",
+  myClipsPanel: "my-clips-panel",
+  myClipsRowPrefix: "my-clips-row-",
+  myClipsPlayPrefix: "my-clips-play-",
+  myClipsDownloadPrefix: "my-clips-download-",
+  myClipsDeletePrefix: "my-clips-delete-",
 
   // Admin recordings list
   adminRecordingsSection: "admin-recordings-section",
