@@ -96,9 +96,11 @@ export const TID = {
   roomDevicePicker: "room-device-picker-button",
   roomMicSelect: "room-mic-select",
   roomSpeakerSelect: "room-speaker-select",
-  recentSpeakersPanel: "recent-speakers-panel",
-  recentSpeakersTrigger: "recent-speakers-trigger",
-  recentSpeakerItemPrefix: "recent-speaker-item-",
+  recentSpeakersPanel: "recent-speakers-panel", // legacy — kept so older tests still resolve
+  recentSpeakersTrigger: "recent-speakers-trigger", // legacy
+  recentSpeakerItemPrefix: "recent-speaker-item-", // legacy
+  hostLiveStrip: "host-live-strip",
+  participantRankPrefix: "participant-rank-",
 
   // Admin recordings list
   adminRecordingsSection: "admin-recordings-section",

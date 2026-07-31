@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only verification of the ADMIN room layout update (Host Live strip, ranked top-3 speakers, fixed 3-col users grid) plus user-view regression. Used 7 concurrent browser contexts against the preview URL. To make speaking detection deterministic in the sandbox, getUserMedia was overridden per-context with an oscillator-backed MediaStream (test-side only, no app code changed), which populated speakerHistory naturally via LiveKit active-speaker events. RESULTS: (1) host-live-strip present for admin (29.5px thin), absent for users; states verified end-to-end: Muted=rgb(200,76,76), Speaking=rgb(230,138,59), Live=rgb(76,125,91) with data-host-state='muted'|'speaking'|'live'; legacy recent-speakers-panel/trigger fully gone (count 0). (2) Ranking: alice spoke -> #1 gold rgb(212,169,74); charlie spoke -> charlie #1 gold sorted to grid position 1, alice #2 silver rgb(176,176,176), both with gold ring; host card NEVER ranked even after the host spoke (data-rank null on admin card). (3) Admin users grid style.gridTemplateColumns = 'repeat(3, minmax(0px, 1fr))' with 0, 2 and 6 users; gridAutoRows='minmax(0px, 1fr)'; 6 users = 2 rows of 3, no page or horizontal scrolling (scrollHeight 1080 == clientHeight 1080). (4) User regression (alice): exactly 2 cards, grid 'repeat(1, minmax(0px,1fr))' (auto-scale, not 3-col), no rank badges, no host-live-strip. (5) Admin controls Grant mic / Mute / Kick present + visible on both ranked and unranked cards; Grant mic click toggled to 'Revoke'. (6) Backend regression: /api/auth/login 200 for owner/admin/alice/charlie, GET+POST+DELETE /api/admin/members 200/201/204.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin room — Host Live strip", "issues": ["Spec-vs-implementation mismatch (cosmetic, needs product decision): the review request expected the strip to show green 'Live' when the admin has joined with mic muted (PTT default), but the implementation shows red 'Muted' in that default state; green 'Live' only appears when Open Mic is toggled on and the host is not currently speaking. Implementation is arguably more accurate — confirm intended semantics.", "'Off-air' (gray #B0B0B0) state is unreachable from the admin's own view while connected (host participant always present), so it was not observable; code path looks correct."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": ["Decide intended Host Live default semantics: red 'Muted' (current) vs green 'Live' (as written in the test request) when the host is connected in PTT mode."],
+  "critical_code_review_comments": [
+    "RoomPage.jsx is 966 lines — approaching the 700-line guideline; the render IIFE holds rankMap/orderedUsers/renderCard and could be extracted into components/hooks (ParticipantCard, useSpeakerRanking) for maintainability.",
+    "rankMap is derived from `speakerHistory` state while card colors use `lastSpokeAtRef` (a ref) + nowTick; ranking therefore only re-computes on speakerHistory changes. Correct today, but worth noting the mixed ref/state sourcing.",
+    "rankMap[s.identity] truthiness check is safe only because ranks start at 1; fine as written."
+  ],
+  "updated_files": ["/app/test_reports/iteration_10.json"],
+  "success_rate": {"backend": "100% (login x4, members GET/POST/DELETE)", "frontend": "100% of must-pass assertions (strip presence/colors, 3-col grid, rank badges + sort order, host exclusion, user-view regression, admin controls, no overflow)"},
+  "seed_data_creation": "Created 4 temp members test_u1..test_u4 (Test@12345) via POST /api/admin/members to test the 6-user 3-col layout; all 4 deleted afterwards (204). alice.ops and charlie left intact. Note: alice was granted mic once during testing (grant is in-session only, not persisted).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Preview URL: https://realtime-voice-hub-6.preview.emergentagent.com (from /app/frontend/.env). Room id feb97dad-08c7-4de0-b28d-fabb4a85719d, plan A max 10 users. Fast login trick: POST /api/auth/login in-page then localStorage.setItem('tn_token', token) and goto /room?id=<id> — skips the login UI. To trigger real speaking/isSpeaking in the sandbox, add_init_script that overrides navigator.mediaDevices.getUserMedia to return an AudioContext oscillator MediaStreamDestination stream (square 300Hz, gain 0.9); LiveKit then reports active speakers and speakerHistory/rank badges populate reliably. Admin grid cols are hard-fixed at 3; user grid uses ceil(sqrt(n)).",
+  "rca_of_the_issue": "No functional defect found. Only open point is the Host Live default-state semantics discrepancy described under design_issues."
+}

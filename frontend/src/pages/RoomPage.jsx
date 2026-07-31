@@ -664,39 +664,33 @@ export default function RoomPage() {
         </div>
       </header>
 
-      {/* Recent Speakers — always-visible inline strip for admin. Live updates every 1s. */}
-      {isHost && (
-        <div data-testid={TID.recentSpeakersPanel} className="border-b border-[#E8E8E3] bg-[#F7F7F4] shrink-0">
-          <div className="max-w-6xl mx-auto px-4 sm:px-8 py-2 flex items-center gap-3 overflow-x-auto">
-            <div className="flex items-center gap-1.5 shrink-0 text-[10px] tracking-widest uppercase text-[#666]">
-              <Volume2 className="w-3.5 h-3.5 text-[#3A4F41]" strokeWidth={1.75} />
-              <span>Recent speakers</span>
+      {/* Host Live — thin status strip below header (admin only). Replaces the Recent Speakers bar. */}
+      {isHost && (() => {
+        const hostP = participants.find((p) => p.role === "room_admin" && p.isLocal) || participants.find((p) => p.role === "room_admin");
+        const lastHostSpoke = hostP ? (lastSpokeAtRef.current[hostP.identity] || 0) : 0;
+        const hostSpeakingActive = hostP && ((hostP.isSpeaking || (nowTick - lastHostSpoke < 2500)) && !hostP.isMuted);
+        const stateLabel = !hostP ? "Off-air" : hostSpeakingActive ? "Speaking" : hostP.isMuted ? "Muted" : "Live";
+        const stateColor = !hostP ? "bg-[#B0B0B0]" : hostSpeakingActive ? "bg-[#E68A3B]" : hostP.isMuted ? "bg-[#C84C4C]" : "bg-[#4C7D5B]";
+        return (
+          <div data-testid={TID.hostLiveStrip} data-host-state={stateLabel.toLowerCase()} className="border-b border-[#E8E8E3] bg-[#F7F7F4] shrink-0">
+            <div className="max-w-6xl mx-auto px-4 sm:px-8 py-1.5 flex items-center gap-3 text-[11px]">
+              <div className="flex items-center gap-1.5 shrink-0 tracking-widest uppercase text-[#666]">
+                <span className={`w-2 h-2 rounded-full ${stateColor} ${hostSpeakingActive ? "animate-pulse" : ""}`} aria-hidden="true" />
+                <span className="font-semibold text-[#111]">Host</span>
+                <span className="text-[#666]">·</span>
+                <span className="text-[#111]">{stateLabel}</span>
+              </div>
+              {hostP && (
+                <div className="flex items-center gap-1.5 min-w-0 text-[#666]">
+                  <span className="hidden sm:inline">·</span>
+                  <span className="font-semibold text-[#111] truncate max-w-[12rem]" title={hostP.name}>{hostP.name}</span>
+                  {hostP.email && <span className="font-mono text-[10px] hidden sm:inline truncate max-w-[14rem]" title={hostP.email}>{hostP.email}</span>}
+                </div>
+              )}
             </div>
-            {speakerHistory.length === 0 ? (
-              <span className="text-xs text-[#666] italic">No one has spoken yet.</span>
-            ) : (
-              <ol className="flex items-center gap-2 min-w-0">
-                {speakerHistory.slice(0, 3).map((s, i) => {
-                  const secs = Math.max(0, Math.floor((nowTick - s.at) / 1000));
-                  const ago = secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m${secs % 60}s`;
-                  const initials = s.name.split(" ").slice(0, 2).map((x) => x[0]).join("").toUpperCase() || "?";
-                  return (
-                    <li key={s.identity + "_" + s.at} data-testid={`${TID.recentSpeakerItemPrefix}${i}`} className="flex items-center gap-2 bg-white border border-[#E8E8E3] rounded-full pl-1 pr-2.5 py-1 shrink-0">
-                      <div className="w-5 h-5 shrink-0 rounded-full bg-[#F2F2F0] flex items-center justify-center text-[9px] font-bold">{initials}</div>
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-xs font-semibold truncate max-w-[8rem]" title={s.name}>{s.name}</span>
-                        {s.role === "room_admin" && <span className="text-[8px] tracking-widest uppercase text-[#3A4F41] border border-[#3A4F41]/40 rounded-sm px-1">Host</span>}
-                        <span className="text-[10px] text-[#666] font-mono hidden sm:inline truncate max-w-[9rem]" title={s.email || s.identity}>· {s.email || s.identity}</span>
-                        <span className="text-[10px] tracking-widest uppercase text-[#666] font-mono whitespace-nowrap">· {ago} ago</span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div ref={audioContainerRef} data-lk-audio-sink aria-hidden="true" style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} />
 
@@ -707,8 +701,33 @@ export default function RoomPage() {
           const users = participants.filter((p) => p.role !== "room_admin");
           // Non-admin viewer only ever sees admin + themselves.
           const visibleUsers = isHost ? users : users.filter((p) => p.isLocal);
-          const userGridCols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(visibleUsers.length || 1))));
-          const compact = visibleUsers.length > 6;
+
+          // Admin view: rank the top-3 most recent speakers among users, sort them to the top.
+          // Non-admin view: no reordering.
+          const rankMap = {};
+          if (isHost) {
+            let r = 1;
+            for (const s of speakerHistory) {
+              if (r > 3) break;
+              // Only rank users (skip host from ranking) and only if they are visible in the users grid.
+              const inUsers = users.some((u) => u.identity === s.identity);
+              if (!inUsers) continue;
+              if (rankMap[s.identity]) continue;
+              rankMap[s.identity] = r++;
+            }
+          }
+          const orderedUsers = isHost
+            ? [...visibleUsers].sort((a, b) => {
+                const ra = rankMap[a.identity] || 99;
+                const rb = rankMap[b.identity] || 99;
+                return ra - rb;
+              })
+            : visibleUsers;
+
+          // Admin view: layout mirrors user's spec — Host on top, then rows of 3 users each.
+          // Non-admin view: keep the previous auto-scale behavior.
+          const userGridCols = isHost ? 3 : Math.min(6, Math.max(1, Math.ceil(Math.sqrt(visibleUsers.length || 1))));
+          const compact = visibleUsers.length > 9;
 
           const getCardState = (p) => {
             const lastSpoke = lastSpokeAtRef.current[p.identity] || 0;
@@ -751,13 +770,26 @@ export default function RoomPage() {
             const outlineBtn = st.colored
               ? "border-white/40 text-white hover:bg-white/10"
               : "border-[#E8E8E3]";
+            const rank = rankMap[p.identity]; // 1 | 2 | 3 | undefined
+            const rankColors = { 1: "bg-[#D4A94A] text-white", 2: "bg-[#B0B0B0] text-white", 3: "bg-[#B87226] text-white" };
             return (
               <div
                 key={p.identity}
                 data-testid={`${TID.participantCardPrefix}${p.identity}`}
                 data-state={st.key}
-                className={`border rounded-md ${c ? "p-2" : lg ? "p-4 sm:p-5" : "p-3 sm:p-4"} flex flex-col justify-between gap-1.5 min-w-0 min-h-0 overflow-hidden transition-colors duration-300 ${st.card}`}
+                data-rank={rank || undefined}
+                className={`relative border rounded-md ${c ? "p-2" : lg ? "p-4 sm:p-5" : "p-3 sm:p-4"} flex flex-col justify-between gap-1.5 min-w-0 min-h-0 overflow-hidden transition-colors duration-300 ${st.card} ${rank ? "ring-2 ring-offset-1 ring-[#D4A94A]/60" : ""}`}
               >
+                {rank && (
+                  <span
+                    data-testid={`${TID.participantRankPrefix}${p.identity}`}
+                    data-rank-number={rank}
+                    className={`absolute top-1 left-1 ${c ? "w-5 h-5 text-[10px]" : "w-6 h-6 text-xs"} rounded-full ${rankColors[rank]} flex items-center justify-center font-extrabold shadow-sm z-10`}
+                    title={rank === 1 ? "Most recent speaker" : rank === 2 ? "2nd most recent" : "3rd most recent"}
+                  >
+                    #{rank}
+                  </span>
+                )}
                 <div className="w-full flex items-start justify-between gap-2 min-w-0">
                   <div className={`${c ? "w-8 h-8 text-xs" : lg ? "w-12 h-12 sm:w-14 sm:h-14 text-base" : "w-10 h-10 sm:w-11 sm:h-11"} shrink-0 rounded-md font-bold flex items-center justify-center ${st.colored ? "bg-white/25 text-white" : "bg-[#F2F2F0] text-[#111]"}`}>
                     {initials}
@@ -869,7 +901,7 @@ export default function RoomPage() {
                       gridAutoRows: "minmax(0, 1fr)",
                     }}
                   >
-                    {visibleUsers.map((u) => renderCard(u, compact ? "compact" : "normal"))}
+                    {orderedUsers.map((u) => renderCard(u, compact ? "compact" : "normal"))}
                   </div>
                 )}
               </section>
